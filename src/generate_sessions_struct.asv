@@ -1,0 +1,116 @@
+function sessions = generate_sessions_struct(tree, path, sel_FOVs, sel_slices, waveform_stim, os, save_flag)
+% Inputs:
+%   tree           - tree structure containing directory information
+%   path           - struct with fields:
+%                       path.save_dir
+%                       path.root.data
+%                       path.anim_ids
+%   sel_FOVs        - vector of FOV indices (empty = auto-detect)
+%   sel_slices     - vector of slice indices to include
+%   waveform_stim  - string used to filter session directories
+%   os             - logical flag for path formatting, 0 for Windows, 1 for Mac/Linux
+%   save_flag      - logical flag for whether or not to save the generated session
+
+% Output:
+%   sessions       - struct array with fields:
+%                       anim_id
+%                       session_path
+%                       session_name
+%                       FOV
+%                       cell_id
+%                       fov_num_cells
+
+%% Try loading cached sessions
+sessions_file = fullfile(path.save_dir, 'sessions.mat'); %'sessions_modified.mat'
+
+if exist(sessions_file, 'file')
+    load(sessions_file, 'sessions');
+
+    if os % adjust paths for OS
+        for sess_i = 1:numel(sessions)
+            sessions(sess_i).session_path = ...
+                replace(sessions(sess_i).session_path, '\', '/');
+        end
+    end
+
+    return
+end
+
+%% Otherwise, curate sessions from directory structure
+sessions = struct( ...
+    'anim_id', {}, ...
+    'session_path', {}, ...
+    'session_name', {}, ...
+    'FOV', {}, ...
+    'cell_id', {}, ...
+    'fov_num_cells', {} );
+
+sess_idx = 0;
+
+for a = 1:numel(tree.animals)
+    for d = 1:numel(tree.animals(a).dates)
+        FOVs = sel_FOVs;
+        for s = 1:numel(tree.animals(a).dates(d).slices)
+            for f = 1:numel(tree.animals(a).dates(d).slices(s).FOVs)
+     
+
+        % Slice directories
+        slices = dir(date_path);
+        slices = slices([slices.isdir]);
+        slices = slices(~ismember({slices.name}, {'.', '..'}));
+        slices = slices(contains({slices.name}, 'slice'));
+
+        for s = 1:numel(slices)
+            if ~ismember(s, sel_slices)
+                continue
+            end
+
+            slice_path = fullfile(date_path, slices(s).name);
+            fprintf('Processing slice: %s\n', slice_path);
+
+            % Auto-detect FOVs if not specified
+            if isempty(FOVs)
+                all_entries = dir(slice_path);
+                fov_dirs = all_entries([all_entries.isdir] & ...
+                    startsWith({all_entries.name}, 'FOV'));
+
+                FOVs = [];
+                for i = 1:numel(fov_dirs)
+                    num = sscanf(fov_dirs(i).name, 'FOV%d');
+                    if ~isempty(num)
+                        FOVs(end+1) = num;
+                    end
+                end
+            end
+
+            % Loop through FOVs
+            for k = FOVs
+                fov_path = fullfile(slice_path, sprintf('FOV%d', k));
+                if ~isfolder(fov_path)
+                    continue
+                end
+
+                sess_dirs = dir(fov_path);
+                sess_dirs = sess_dirs([sess_dirs.isdir]);
+                sess_dirs = sess_dirs(~ismember({sess_dirs.name}, {'.', '..'}));
+                sess_dirs = sess_dirs(contains({sess_dirs.name}, waveform_stim));
+
+                fov_num_cells = numel(sess_dirs);
+
+                for i = 1:numel(sess_dirs)
+                    sess_idx = sess_idx + 1;
+
+                    sessions(sess_idx).anim_id        = animal_id;
+                    sessions(sess_idx).session_path  = fullfile(fov_path, sess_dirs(i).name);
+                    sessions(sess_idx).session_name  = sess_dirs(i).name;
+                    sessions(sess_idx).FOV           = k;
+                    sessions(sess_idx).cell_id       = i;
+                    sessions(sess_idx).fov_num_cells = fov_num_cells;
+                    sessions(sess_idx).cell_hash = sprintf('%s_%s_%s_FOV%d_Cell%d', animal_id, dates(d).name, slices(s).name, k, i);
+                end
+            end
+        end
+    end
+end
+if save_flag; save(fullfile(path.save_dir,'sessions'), "sessions");
+end

@@ -1,0 +1,471 @@
+%% resetting
+clear all;
+%% Session Parameters
+rng(123, 'twister');
+os = 1; % 0 if on Z://, lab computer (windows), 1 if mounted in volumes on mac or loading modified version
+if os; root_path = fullfile('/Volumes/fanlab'); else; root_path = fullfile('Z:'); end
+is_motion_corr = 1; % 0 if pre-motion correction, 1 if post
+compare_motion = 1; % compare pre vs post-motion performance
+
+%% generating paths
+addpath(genpath(fullfile(root_path,'Labmembers','Kohl','Code')));
+addpath(genpath(fullfile(root_path,'Computer Code','Image Processing')));
+addpath(genpath(fullfile(root_path,'Computer Code','NoRmCorre')));
+addpath(genpath(fullfile(root_path,'Computer Code','Fan Lab')));
+
+%% setting directories
+cck_w05_path = fullfile(root_path,'Labmembers','Kohl','CCK', 'cck-gevi-w05');
+cck_w03_path = fullfile(root_path,'Data and Analysis','DSI-BTSP','CCK-voltage_KS', 'cck-gevi-w03');
+
+%supportpath = fullfile(root_path, 'Labmembers','Kohl','Support','cck-gevi','dataset','output', 'cck-gevi-w03','2025-04-22','slice1'); 
+%if usecckdir; base_path = cckpath; else; base_path = supportpath; addpath(genpath((cckpath))); end
+%base_path = supportpath; addpath(genpath((cckpath)));
+%base_path = fullfile(root_path,'Labmembers','Kailong','in v
+% ivo imaging_IPSP','cck-voltage','cck-GEVI-w03','2025-05-16 voltage during VR','slice1');
+FOVs = []; % FOVs to process. Leave blank for all
+path.root.dataset = fullfile(root_path, 'Labmembers','Kohl','Support','cck-gevi','dataset');
+path.root.support = fullfile(root_path, 'Labmembers','Kohl','Support','cck-gevi','dataset','output', 'post-motion');
+
+path.root.raw_data = fullfile(root_path,'Data and Analysis','DSI-BTSP','CCK-voltage_KS');
+
+path.anim_ids = {'cck-gevi-w03','cck-gevi-w03','cck-gevi-w03','cck-gevi-w03','cck-gevi-w03', 'cck-gevi-w05','cck-gevi-w05','cck-gevi-w05','cck-gevi-w05'};
+path.sess_ids = {'2025-03-27 voltage recording during vr','2025-04-22 voltage record move stop','2025-05-01 voltage during VR','2025-05-07 voltage during VR','2025-05-16 voltage during VR','Running9_15_2025','Running9_19_2025','Running9_23_2025','Running9_26_2025'};
+path.save_sess_ids = {'2025-03-27','2025-04-22','2025-05-01','2025-05-07','2025-05-16','Running9_15_2025','Running9_19_2025','Running9_23_2025','Running9_26_2025'};
+
+path.slice_nums = [1 1 1 1 1 1 1 1 1];
+if is_motion_corr; path.save_name = "post-motion"; 
+else; path.save_name = 'pre-motion'; end
+path.save_dir = fullfile(path.root.dataset,'analysis', path.save_name);
+[~,~] = mkdir(path.save_dir);
+%% Parameters
+prepro = [0 0 0 0];%[Movement ICA_pre ICA_choose SpikeThreshold
+is_stim = 0;
+if is_stim; blueStim = 'AO'; else blueStim = ''; end
+saved_file = "with_analysis_metrics.mat";
+is_rerun = 0;
+%% Generating sessions
+if exist(fullfile(path.save_dir, saved_file)) && is_rerun;
+    saved_sessions = load(fullfile(path.save_dir, saved_file));
+    sessions = saved_sessions.sessions;
+    sel_sess = {sessions.session_name};
+end
+if ~exist(fullfile(path.save_dir, saved_file), 'file') || is_rerun
+    for s_i = 1:length(path.sess_ids)
+        path.slice = fullfile(path.root.support,sprintf('%s/%s/slice%d', path.anim_ids{s_i},path.save_sess_ids{s_i},path.slice_nums(s_i)));
+        path.session_file = fullfile(path.slice,'support_analysis.mat');
+    
+        if contains(path.anim_ids{s_i}, "w03")
+            path.data_slice = fullfile(cck_w03_path,sprintf('%s/slice%d',path.sess_ids{s_i},path.slice_nums(s_i)));
+        else; path.data_slice = fullfile(cck_w05_path,sprintf('%s/slice%d',path.sess_ids{s_i},path.slice_nums(s_i)));
+        end
+    
+        if ~exist(path.slice); fprintf('Slice does not exist: %s',path.slice); continue; end
+    
+        % % Get all first-level subdirectories
+        lvl1_dirs = dir(path.slice);
+        lvl1_dirs = lvl1_dirs([lvl1_dirs.isdir]);
+        lvl1_dirs = lvl1_dirs(~ismember({lvl1_dirs.name}, {'.', '..'}));
+
+        for i = 1:numel(lvl1_dirs)
+            lvl1_path = fullfile(lvl1_dirs(i).folder, lvl1_dirs(i).name);
+
+            % Get all second-level subdirectories
+            lvl2_dirs = dir(lvl1_path);
+            lvl2_dirs = lvl2_dirs([lvl2_dirs.isdir]);
+            lvl2_dirs = lvl2_dirs(~ismember({lvl2_dirs.name}, {'.', '..'}));
+            lvl2_dirs = lvl2_dirs(contains({lvl2_dirs.name}, {'Spon', 'spon'}));
+            for j = 1:numel(lvl2_dirs)
+                % if ~contains(lvl2_dirs(j).name, {'173002_Spon30','105118_Spon30','165640_Spon30','174802_Spon30'})
+                %     continue
+                % end
+                %spike_file = 'inter_spikeT_spikeW.mat';
+                lvl2_path = fullfile(lvl1_path, lvl2_dirs(j).name);
+                target_file = fullfile(lvl2_path, 'AI Data');
+                disp(lvl2_dirs(j).name)
+                if ~isfile(target_file)
+                    fprintf('Missing "AI Data" in %s\n', lvl2_path);
+                    source_file = fullfile(path.data_slice, lvl1_dirs(i).name, lvl2_dirs(j).name, 'AI Data');
+                    disp(source_file)
+                    if isfile(source_file)
+                        copyfile(source_file, target_file);
+                        fprintf('Copied "AI Data"');
+                    else
+                        warning('Source file not found: %s', fullfile(path.data_slice, lvl2_dirs(j).name));
+                    end
+                else
+                    fprintf('"AI Data" already exists in %s\n', lvl2_path);
+                end
+            end
+        end
+        if is_rerun || ~exist(path.session_file)
+            %sel_sess = {'173002_Spon30','105118_Spon30','165640_Spon30','174802_Spon30'};
+            if ~exist('sel_sess', 'var'); sel_sess = {}; end
+            %sel_sess = {};
+            new_sess = pool_intens_analysis('base_path', path.slice, 'sess_ids', sel_sess, 'raw_path', path.data_slice, 'motion_corr', analyze_motion);
+        end
+        if exist(path.session_file)
+                loaded_data = load(path.session_file);
+                new_sess = loaded_data.sessions;
+        end
+        if ~exist('sessions', 'var'); sessions = new_sess; 
+        else; sessions = [sessions, new_sess]; end
+        clear loaded_data new_sess;
+    end
+else
+    saved_sessions = load(fullfile(path.save_dir, saved_file));
+    sessions = saved_sessions.sessions;
+    if os == 0
+        for sess_i = 1:length(sessions)
+            sessions(sess_i).session_path = replace(sessions(sess_i).session_path, '/Volumes/fanlab', 'Z:');
+            sessions(sess_i).session_path = replace(sessions(sess_i).session_path, '/', '\');
+        end
+    end
+end
+
+%% Choosing noise regions yourself
+if ~exist(fullfile(path.save_dir, "noise_regions"), 'dir')
+    mkdir(fullfile(path.save_dir, "noise_regions"));end
+
+for sess_i = 1:length(sessions)
+    if exist(fullfile(save_path, sprintf('NoiseRegion%s%d.png', sessions(sess_i).cell_hash, i))); continue; end
+    dt = 1; % period = 1000:2000;
+    nCell = sessions(sess_i).fov_num_cells;
+    IntensOrig = sessions(sess_i).trace{2}; % get denoised trace
+    noise_region = zeros(1,nCell);
+    % raw_noise_region = zeros(1, nCell);
+    clear SNR
+    for i = 1:nCell
+       dFTraces = IntensOrig(:, i);
+       % raw_dFTraces = raw_IntensOrig(:, i);
+       traces = {dFTraces};%, raw_dFTraces};
+       for t = 1:numel(traces)
+           trace = traces{t};
+           save_path = fullfile(path.save_dir, "noise_regions");
+           % else; save_path = fullfile(path.save_dir, "noise_regions", "raw"); end
+           while true
+               fig = figure('Position', [100 100 1500 600]);plot(trace,'r');
+               title('Right-click to select start of baseline noise region')
+               hold on;
+        
+               [x, ~] = ginput(1);
+               %tochoose = x;
+               period1 = uint16(x);
+               period = [period1:period1+300];
+        
+               plot(period,trace(period),'b');
+               
+               % allow for redo
+               text(double(period1), trace(period1), ...
+                ' Press any key to accept, or press "r" to redo', ...
+                'VerticalAlignment','bottom','Color','k');
+
+               w = waitforbuttonpress;
+               key = get(fig, 'CurrentCharacter');
+
+               if lower(key) ~= 'r'
+                   %if t == 1; denoised_noise_region(i) = period1;
+                   %else; raw_noise_region(i) = period1; end
+                   noise_region(i) = period1;
+                   saveas(fig, fullfile(save_path, sprintf('NoiseRegion%s%d.png', sessions(sess_i).cell_hash, i)));
+                   savefig(fig, fullfile(save_path, sprintf('NoiseRegion%s%d.fig', sessions(sess_i).cell_hash, i)));
+                   close(fig);
+                   break
+               end
+               close(fig);
+           end
+       end
+    end
+    sessions(sess_i).noise_regions = noise_region;
+    %sessions(sess_i).raw_noise_reg = raw_noise_region;
+end
+if ~exist(fullfile(path.save_dir, 'noise_regions'))
+    save(fullfile(path.save_dir, 'noise_regions'), 'sessions');
+end
+%% individual session summary plots
+if ~exist(fullfile(path.save_dir, "metrics"), 'dir')
+    mkdir(fullfile(path.save_dir, "metrics"));end
+colors = [
+    0, 0, 0;          % Raw - black
+    0.0, 0.45, 0.74;];  % 50 - blue
+if analyze_motion
+    type =  {'raw', 'pre', 'post'}; end_idx = 3;
+    else; type = {'raw', 'SUPPORT'}; 
+end
+for sess_i = 1:length(sessions)
+    if sessions(sess_i).session_name == '105014_Spon30'; continue; end
+    nCell = sessions(sess_i).fov_num_cells;
+    i = sessions(sess_i).cell_id;
+    fig = figure('Position', [100, 100, 1400, 900], 'Color', 'w');
+    spike_idx = sessions(sess_i).raw_spikes{i};
+    snippet_len = 500;
+    waveforms = cell(end_idx, 1);
+    noise_regions = sessions(sess_i).noise_regions;
+    % Get valid spike indices
+    trace_len = length(sessions(sess_i).trace{1}(:,i));
+    valid_spikes = spike_idx(spike_idx > snippet_len & spike_idx < trace_len - snippet_len);    
+    traces_all = cell(end_idx, 1);
+    for f = 1:3
+        trace = sessions(sess_i).trace{f}(:,i);
+        aligned = zeros(length(valid_spikes), 2*snippet_len + 1);
+        for s = 1:length(valid_spikes)
+            idx = valid_spikes(s);
+            aligned(s, :) = trace(idx-snippet_len:idx+snippet_len);
+        end
+        mean_waveform = mean(aligned, 1);
+        waveforms{f} = mean_waveform;
+        spike_heights(i, f) = max(mean_waveform);
+        psnrs(i, f) = 20 * log10(spike_heights(i, f) / std(trace(noise_regions(i):(noise_regions(i)+299))));
+
+        % scaling traces
+        maxPos = max(trace);
+        scaled = trace/maxPos;
+        sessions(sess_i).scaled_traces{f} = scaled;
+    end
+
+    sessions(sess_i).spike_height = spike_heights(i);
+    sessions(sess_i).waveforms = waveforms;
+    sessions(sess_i).psnr = psnrs(i);
+    
+    % Top-left: traces
+    figure(fig);
+    subplot('Position', [0.05, 0.35, 0.7, 0.55]); hold on;
+
+    offset = 0;  % vertical offset between traces
+    for f = 1:end_idx
+        trace = scaled_traces_all{f};
+        % norm_trace = trace - movmean(trace, 100);
+        % norm_trace = norm_trace + offset * (nEpochs - f);  % stack traces top-down
+
+        % norm_trace_0 = trace_0 - movmean(trace_0, 100);
+        % norm_trace_0 = norm_trace_0 + offset * (nEpochs - f);
+    
+        if f == 1
+            plot(trace + offset * (2 - f), 'k', 'LineWidth', 0.7, 'DisplayName', type{f});
+        else
+            % on top of for many looks unclear
+            % plot(trace_0 + offset * (nEpochs - f), 'k', 'LineWidth', 0.9, 'HandleVisibility', 'off');
+            plot(trace + offset * (2 - f), 'Color', colors(f,:), 'LineWidth', 0.7, 'DisplayName', type{f});
+        end
+    end
+    
+    title('Raw vs Denoised Trace (Stacked)');
+    xlabel('Frame'); ylabel('ΔF (offset)');
+    legend;
+    ylim auto
+
+    % Top-right: PSNR
+    epochs = [0, 50];
+    figure(fig);
+    subplot('Position', [0.8, 0.7, 0.15, 0.2]);
+    plot(epochs, psnrs(i, :), '-o', 'LineWidth', 1.5);
+    title('PSNR'); xlabel('# Epochs'); ylabel('20log10(peak/std)'); grid on;
+
+    % Bottom: Spike waveforms
+    figure(fig);
+    for f = 1:2
+        subplot('Position', [0.05 + 0.16*(f-1), 0.05, 0.13, 0.2]); hold on;
+        plot(mat2gray(waveforms{1}), 'Color', [0 0 0 0.5], 'LineWidth', 1);  % showing denoised on top
+        plot(mat2gray(waveforms{f}), 'Color', colors(f,:), 'LineWidth', 1.2);
+        corr = corrcoef(mat2gray(waveforms{1}), mat2gray(waveforms{f}));
+        corrs(i, f) = corr(2,1);
+        xline(snippet_len+1, '--', '0');
+        title(sprintf('%d epochs', epochs(f)));
+        xlabel('Frame'); ylabel('Norm ∆F');
+    end
+    sessions(sess_i).corr_waveform = corrs(i, 2);
+    % Bottom right: average waveform
+    % load waveform fig
+    session_info = strsplit(sessions(sess_i).session_path, filesep);
+    if contains(sessions(sess_i).anim_id, "w03")
+        w03_dirs = dir(cck_w03_path);
+        w03_dirs = w03_dirs([w03_dirs.isdir]);
+        w03_dirs = w03_dirs(~ismember({w03_dirs.name}, {'.', '..'}));
+        matching_dirs = w03_dirs(startsWith({w03_dirs.name}, session_info{end-3}));
+        matching_date = matching_dirs(1).name;
+        raw_path = fullfile(cck_w03_path,sprintf('%s/slice%d/FOV%d',matching_date,1, sessions(sess_i).FOV));
+    else; raw_path = fullfile(cck_w05_path,sprintf('%s/slice%d/FOV%d',session_info{12},1, sessions(sess_i).FOV));
+    end
+    avg_waveform_name = sprintf('Fig%d_avg_spike_waveform.fig', sessions(sess_i).cell_id);
+    
+    %ax_raw = findobj(raw_fig, 'Type', 'Axes');
+    figure(fig);
+    avg_axes = subplot('Position', [0.05 + 0.32, 0.05, 0.13, 0.2]); hold(avg_axes, 'on');
+    denoised_fig = openfig(fullfile(sessions(sess_i).session_path, avg_waveform_name),'invisible', 'new');
+    %ax_denoised = findobj(denoised_fig, 'Type', 'Axes');
+    lines_denoised = findobj(denoised_fig, 'Type', 'Line');
+    raw_fig = openfig(fullfile(raw_path, sessions(sess_i).session_name, avg_waveform_name), 'invisible', 'new');
+    lines_raw = findobj(raw_fig, 'Type', 'Line');
+    x_raw = lines_raw.XData; y_raw = lines_raw.YData;
+    x_denoised = lines_denoised.XData; y_denoised = lines_denoised.YData;
+    % normalize spike height
+    y_raw = y_raw/max(y_raw); y_denoised = y_denoised/max(y_denoised);
+    plot(avg_axes, x_raw, y_raw,'Color', colors(1,:), 'LineWidth', 1.2);
+    plot(avg_axes, x_denoised, y_denoised, 'Color', colors(2,:), 'LineWidth', 1.2);
+    title(avg_axes, 'Average Spike Waveform');
+    xlabel(avg_axes, 'Time (ms)'); ylabel(avg_axes, 'Fluorescence (A.U.)');
+    legend(avg_axes, 'Raw', 'Denoised');
+    xlim(avg_axes, [-0.02, 0.02]);
+    close(raw_fig); close(denoised_fig);
+    figure(fig);
+    sessions(sess_i).corr_waveform = corrs(i, 2);
+    % Middle-right: Spike height
+    subplot('Position', [0.8, 0.4, 0.15, 0.2]);
+    plot(epochs, corrs(i, :), '-o', 'LineWidth', 1.5);
+    title('Avg Spike Correlations'); xlabel('# Epochs'); ylabel('Pearson R'); grid on;
+
+    sgtitle(sprintf('%s %s Cell%d', sessions(sess_i).anim_id, erase(sessions(sess_i).session_name, '_'), i), 'FontSize', 14, 'FontWeight', 'bold');
+    
+    saveas(fig, fullfile(path.save_dir, "metrics", sprintf('%s_%s_FOV%d_Cell%d.png', sessions(sess_i).anim_id, sessions(sess_i).session_name, sessions(sess_i).FOV, i)));
+    savefig(fig, fullfile(path.save_dir, "metrics", sprintf('%s_%s_FOV%d_Cell%d', sessions(sess_i).anim_id, sessions(sess_i).session_name, sessions(sess_i).FOV, i)));
+
+    %exportgraphics(fig, fullfile(path.save_dir, "metrics", 'MoviePanels.pdf'), 'Append', i > 1, 'Resolution', 300, 'ContentType', 'vector');
+    close(fig);
+    
+end
+%save(fullfile(path.save_dir, saved_file), 'sessions');
+
+%% just plotting average waveform to confirm pre vs post motion
+
+for sess_i = 1:length(post_sessions)
+    i = post_sessions(sess_i).cell_id;
+    if post_sessions(sess_i).session_name == '105014_Spon30'; continue; end
+    fig = figure('Position', [100, 100, 1400, 900], 'Color', 'w');
+    if os;
+        post_sessions(sess_i).session_path = replace(post_sessions(sess_i).session_path, 'Z:', '/Volumes/fanlab');
+        post_sessions(sess_i).session_path = replace(post_sessions(sess_i).session_path, '\', '/');
+    end
+    pre_session_info = strsplit(pre_sessions(sess_i).session_path, filesep);
+    post_session_info = strsplit(post_sessions(sess_i).session_path, filesep);
+
+    if contains(post_sessions(sess_i).anim_id, "w03")
+        w03_dirs = dir(cck_w03_path);
+        w03_dirs = w03_dirs([w03_dirs.isdir]);
+        w03_dirs = w03_dirs(~ismember({w03_dirs.name}, {'.', '..'}));
+        matching_dirs = w03_dirs(startsWith({w03_dirs.name}, post_session_info{end-3}));
+        matching_date = matching_dirs(1).name;
+        raw_path = fullfile(cck_w03_path,sprintf('%s/slice%d/FOV%d',matching_date,1, post_sessions(sess_i).FOV));
+    else; raw_path = fullfile(cck_w05_path,sprintf('%s/slice%d/FOV%d',post_session_info{12},1, post_sessions(sess_i).FOV));
+    end
+    avg_waveform_name = sprintf('Fig%d_avg_spike_waveform.fig', post_sessions(sess_i).cell_id);
+    %ax_raw = findobj(raw_fig, 'Type', 'Axes');
+    %avg_axes = subplot('Position', [0.05 + 0.32, 0.05, 0.13, 0.2]); hold(avg_axes, 'on');
+    pre_fig = openfig(fullfile(pre_sessions(sess_i).session_path, avg_waveform_name),'invisible', 'new');
+    %ax_denoised = findobj(denoised_fig, 'Type', 'Axes');
+    lines_pre = findobj(pre_fig, 'Type', 'Line');
+    post_fig = openfig(fullfile(post_sessions(sess_i).session_path, avg_waveform_name),'invisible', 'new');
+    lines_post = findobj(post_fig, 'Type', 'Line');
+    raw_fig = openfig(fullfile(raw_path, post_sessions(sess_i).session_name, avg_waveform_name), 'invisible', 'new');
+    lines_raw = findobj(raw_fig, 'Type', 'Line');
+    x_raw = lines_raw.XData; y_raw = lines_raw.YData;
+    x_pre = lines_pre.XData; y_pre = lines_pre.YData;
+    x_post = lines_post.XData; y_post = lines_post.YData;
+
+    % compute pearson correlation btw avg waveforms
+    y_raw  = y_raw(:); y_pre  = y_pre(:); y_post = y_post(:);
+    r_raw_pre  = corr(y_raw, y_pre,  'Type', 'Pearson');
+    r_raw_post = corr(y_raw, y_post, 'Type', 'Pearson');
+    % normalize spike height
+    y_raw = y_raw/max(y_raw); y_pre = y_pre/max(y_pre); y_post = y_post/max(y_post);
+    plot(x_raw, y_raw,'Color', 'black', 'LineWidth', 1.2); hold on;
+    plot(x_pre, y_pre, 'Color', 'blue', 'LineWidth', 1.2); hold on;
+    plot(x_post, y_post, 'Color', 'red', 'LineWidth', 1.2);
+    txt = {
+    sprintf('Raw vs Pre:  r = %.3f', r_raw_pre)
+    sprintf('Raw vs Post: r = %.3f', r_raw_post)
+    };
+    text(0.02, 0.95, txt, ...
+        'Units', 'normalized', ...
+        'VerticalAlignment', 'top', ...
+        'FontSize', 11);
+    xlabel('Time (ms)'); ylabel('Fluorescence (A.U.)');
+    legend('Raw', 'Pre', 'Post');
+    xlim([-0.02, 0.02]);
+    close(raw_fig); close(pre_fig); close(post_fig);
+    sgtitle(sprintf('%s %s Cell%d', pre_sessions(sess_i).anim_id, erase(pre_sessions(sess_i).session_name, '_'), i), 'FontSize', 14, 'FontWeight', 'bold');
+        
+    saveas(fig, fullfile(path.root.dataset,'analysis', "waveforms", sprintf('%s_%s_FOV%d_Cell%d.png', pre_sessions(sess_i).anim_id, pre_sessions(sess_i).session_name, pre_sessions(sess_i).FOV, i)));
+    savefig(fig, fullfile(path.root.dataset,'analysis', "waveforms", sprintf('%s_%s_FOV%d_Cell%d', pre_sessions(sess_i).anim_id, pre_sessions(sess_i).session_name, pre_sessions(sess_i).FOV, i)));
+    
+    %exportgraphics(fig, fullfile(path.save_dir, "metrics", 'MoviePanels.pdf'), 'Append', i > 1, 'Resolution', 300, 'ContentType', 'vector');
+    close(fig);
+    waveform_corr(sess_i).raw_pre  = r_raw_pre;
+    waveform_corr(sess_i).raw_post = r_raw_post;
+    waveform_corr(sess_i).cell_hash  = post_sessions(sess_i).cell_hash;
+    waveform_corr(sess_i).difference
+end
+save(fullfile(path.root.dataset,'analysis', "waveforms", 'correlations.mat'), "waveform_corr")
+%% loading both post and pre motion processing sessions
+full_sessions = cell(1,2);
+if exist('sessions', 'var')
+    if is_motion_corr
+        pre_sessions = load(fullfile(path.root.dataset,'analysis','pre-motion',saved_file));
+        post_sessions = sessions;
+    else
+        post_sessions = load(fullfile(path.root.dataset,'analysis','post-motion',saved_file));
+        pre_sessions = sessions;
+    full_sessions{1} = pre_sessions.sessions;
+    full_sessions{2} = post_sessions.sessions;
+    end
+else
+    pre_sessions  = load(fullfile(path.root.dataset,'analysis','pre-motion',saved_file));
+    post_sessions = load(fullfile(path.root.dataset,'analysis','post-motion',saved_file));
+
+    full_sessions{1} = pre_sessions.sessions;
+    full_sessions{2} = post_sessions.sessions;
+end
+
+%% dataset summary
+% changing save dir to general (one level up from pre/post motion subdir)
+path.save_dir = fullfile(path.root.dataset,'analysis');
+% preparing and aligning sessions % later can get rid of this once
+% consolidated into one struct
+names_pre = {full_sessions{1}.session_name};
+names_post = {full_sessions{2}.session_name};
+[common_names, idx_pre, idx_post] = intersect(names_pre, names_post);
+% 
+pre_aligned = full_sessions{1}(idx_pre);
+post_aligned = full_sessions{2}(idx_post); 
+% PSNR
+psnrs{1} = cat(1, pre_aligned.raw_psnr);
+psnrs{2} = cat(1, pre_aligned.denoised_psnr);
+psnrs{3} = cat(1, post_aligned.denoised_psnr);
+figure; hold on;
+colors = {'r', 'b'};
+all_vals = []; % to get axis lims
+for f = 2:3
+    x = psnrs{1}(:);
+    y = psnrs{f}(:);
+    all_vals = [all_vals; x; y;];
+    scatter(x, y, 25, colors{f-1}, 'filled','MarkerFaceAlpha', 0.6);
+    coeffs = polyfit(x, y, 1);
+    x_fit = linspace(min(x), max(x), 100);
+    y_fit = polyval(coeffs, x_fit);
+    plot(x_fit, y_fit, 'Color', colors{f-1}, 'LineWidth', 1.5);    
+end
+lims = [min(all_vals), max(all_vals)];
+plot(lims, lims, 'k--', 'LineWidth', 1);
+xlabel('PSNR Raw');
+ylabel('PSNR with SUPPORT');
+title('PSNR: after SUPPORT vs Raw');
+
+axis square;
+grid on;
+legend({'pre-motion', 'pre best fit', 'post-motion', 'post best fit', 'y=x'}, ...
+    'Location', 'best');
+[~, p_pre] = ttest(psnrs{2}, psnrs{1});
+[~, p_post] = ttest(psnrs{3}, psnrs{1});
+x_text1 = lims(1) + 0.32*(lims(2)-lims(1));
+y_text1 = lims(2) - 0.08*(lims(2)-lims(1));
+x_text2 = lims(1) + 0.40*(lims(2)-lims(1));
+y_text2 = lims(2) - 0.33*(lims(2)-lims(1));
+text(x_text1, y_text1, sprintf('p_{pre} = %.3g', p_pre), ...
+    'FontSize', 12, 'FontWeight', 'bold', 'Color', colors{1});
+
+text(x_text2, y_text2, sprintf('p_{post} = %.3g', p_post), ...
+    'FontSize', 12, 'FontWeight', 'bold', 'Color', colors{2});
+
+saveas(gcf(), fullfile(path.save_dir, 'PSNR after SUPPORT vs Raw.png'));
+
+% firing rate
+
+% num spikes vs SNR

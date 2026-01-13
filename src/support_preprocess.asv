@@ -1,0 +1,191 @@
+% support_preprocess.m
+% copy of preprocess that takes one session integrated with support for denoising
+% no crazy directory navigation
+% EW 01/06/2026 based on KS 5/20/2025
+% Based on Linlin Fan Scripts:
+% 0) SUPPORT
+% 1) Motion Correction - Ru n_dir_mov_RMCorre.m
+% 2) ICA/PCA - Run_dir_PCA_ICA_RMmov.m
+% 3) Spike Thresholding - Run_dir_spikeT_spikeW_FOV.m
+
+clear; close all;
+
+%% Session & FOV Parameters
+rng(123, 'twister');
+os = 0; % 0 if on Z://, lab computer (windows), 1 if mounted in volumes on mac or loading modified version
+if os; root_path = fullfile('/Volumes/fanlab'); else; root_path = fullfile('Z:'); end
+is_motion_corr = 1; % 0 if pre-motion correction, 1 if post
+
+%% generating paths
+addpath(genpath(fullfile(root_path,'Labmembers','Kohl','Code')));
+addpath(genpath(fullfile(root_path,'Computer Code','Image Processing')));
+addpath(genpath(fullfile(root_path,'Computer Code','NoRmCorre')));
+addpath(genpath(fullfile(root_path,'Computer Code','Fan Lab')));
+
+path.save_dir = fullfile(path.root.dataset,'analysis');
+[~,~] = mkdir(path.save_dir);
+%% Parameters
+prepro = [0 0 1 1];%[Movement ICA_pre ICA_choose SpikeThreshold
+is_rerun = [0 0 0 0 1];%extra index for analysis
+is_stim = 0;
+if is_stim; blueStim = 'AO'; else blueStim = ''; end
+
+%% Parse Directories
+target_file = 'denoised.tiff';
+subdir_path = fullfile(fov_path, dirs(i).name);
+if isfile(fullfile(subdir_path, target_file))
+    fprintf('Processing: %s\n', subdir_path);
+
+    %% Motion Correction
+    corrected_output = 'movReg.bin';
+    if prepro(1) && (~isfile(fullfile(subdir_path,corrected_output)) || is_rerun(1))
+        disp("Running Motion Correction")
+        try
+            cd(subdir_path);
+
+            % Load parameters
+            % fid = fopen('experimental_parameters.txt', 'r');
+            % Info = textscan(fid, '%s');
+            % fclose(fid);
+            % nrow = str2double(Info{1}{6});
+            % ncol = str2double(Info{1}{3});
+
+            % Read and process movie
+            %[mov, ~] = readBinMov(target_file, nrow, ncol);
+            mov = loadtiff(target_file);
+            movReg = NoRMCorre2(mov);
+            savebin(vm(movReg), corrected_output);
+
+            fprintf('Success: %s\n', subdir_path);
+        catch ME
+            fprintf('Failed: %s\nError: %s\n', subdir_path, ME.message);
+        end
+        close all;
+    end
+
+    %% ICA
+    if any(prepro(2:3))
+        try
+            split_subdir = strsplit(subdir_path, filesep);
+            if contains(animal_path, "cck-gevi-w03")
+               cck_subdir_path = fullfile(cck_w03_path, matching_date, split_subdir{end-2:end});
+            else
+               cck_subdir_path = fullfile(cck_w05_path, dates(d).name, split_subdir{end-2:end});
+            end
+            if ~isfile(fullfile(subdir_path,"experimental_parameters.txt")) || ~isfile(fullfile(subdir_path, "AI Data"))
+                if ~isfile(fullfile(subdir_path,"experimental_parameters.txt"))
+                    copyfile(fullfile(cck_subdir_path, "experimental_parameters.txt"), subdir_path);
+                end
+                if ~isfile(fullfile(subdir_path, "AI Data"))
+                    copyfile(fullfile(cck_subdir_path, "AI Data"), subdir_path);
+                end
+            end
+
+            %ICA Pre
+            if (~isfile(fullfile(subdir_path,'ICA_PreResults.mat')) && prepro(2)) || is_rerun(2)
+                cd(subdir_path);
+                disp("Running ICA_Pre")
+                %Run_PCA_ICA_RMmov_FanLab_function(dt); %something up with directories...
+                ICA_Pre_support(is_stim, is_motion_corr);
+            end
+
+            %ICA Choose
+            
+            if (isfile(fullfile(subdir_path,'ICA_PreResults.mat')) && ~isfile(fullfile(subdir_path,'Fig_intens_ICA.fig')) && prepro(3)) || is_rerun(3)
+                cd(subdir_path);
+                disp("Running ICA_Choose")
+                if isfolder(fullfile(cck_subdir_path, "matlab wvfm")) && ~isfolder(fullfile(subdir_path, "matlab wvfm"))
+                    copyfile(fullfile(cck_subdir_path, "matlab wvfm"), fullfile(subdir_path, "matlab wvfm"));
+                    is_stim=1;
+                else
+                    is_stim = 0;
+                end
+                ICA_Choose_support(is_stim);
+            end
+            fprintf('Success: %s\n', subdir_path);
+        catch ME
+            fprintf('Failed: %s\nError: %s\n', subdir_path, ME.message);
+        end
+        close all;
+    end
+
+    %% Spike Thresholding
+    if prepro(4)
+        if (isfile(fullfile(subdir_path,'Masks_BestIcaImgs.mat')) && ~isfile(fullfile(subdir_path,'inter_spikeT_spikeW.mat')) ) || is_rerun(4)
+            disp("Running Spike Thresholding")
+            try
+                cd(subdir_path);
+                
+                openfig('Fig_intens_ICA.fig');
+                set(gcf, 'Units', 'Normalized', 'OuterPosition', [0 0 1 1]);
+                
+                
+                Run_ext_spike_HipCA1VR_AIBluecrt_FanLab_functionV6_kohl(blueStim); 
+
+                disp(['success at ', fullfile(fov_path, dirs(i).name)]);
+                close all
+            catch ME
+                disp(['fail at ', fullfile(fov_path, dirs(i).name)]);
+            end
+        end
+    end
+end
+
+%% Generating sessions
+for s_i = 1:length(path.sess_ids)
+    path.slice = fullfile(path.root.support,sprintf('%s/%s/slice%d', path.anim_ids{s_i},path.save_sess_ids{s_i},path.slice_nums(s_i)));
+    path.session_file = fullfile(path.slice,'sessions.mat');
+
+    if contains(path.anim_ids{s_i}, "w03")
+        path.data_slice = fullfile(cck_w03_path,sprintf('%s/slice%d',path.sess_ids{s_i},path.slice_nums(s_i)));
+    else; path.data_slice = fullfile(cck_w05_path,sprintf('%s/slice%d',path.sess_ids{s_i},path.slice_nums(s_i)));
+    end
+
+    if ~exist(path.slice); fprintf('Slice does not exist: %s',path.slice); continue; end
+
+    % Get all first-level subdirectories
+    lvl1_dirs = dir(path.slice);
+    lvl1_dirs = lvl1_dirs([lvl1_dirs.isdir]);
+    lvl1_dirs = lvl1_dirs(~ismember({lvl1_dirs.name}, {'.', '..'}));
+    
+    for i = 1:numel(lvl1_dirs)
+        lvl1_path = fullfile(lvl1_dirs(i).folder, lvl1_dirs(i).name);
+        
+        % Get all second-level subdirectories
+        lvl2_dirs = dir(lvl1_path);
+        lvl2_dirs = lvl2_dirs([lvl2_dirs.isdir]);
+        lvl2_dirs = lvl2_dirs(~ismember({lvl2_dirs.name}, {'.', '..'}));
+        lvl2_dirs = lvl2_dirs(contains({lvl2_dirs.name}, {'Spon', 'spon'}));
+        for j = 1:numel(lvl2_dirs)
+            % if ~contains(lvl2_dirs(j).name, {'173002_Spon30','105118_Spon30','165640_Spon30','174802_Spon30'})
+            %     continue
+            % end
+            %spike_file = 'inter_spikeT_spikeW.mat';
+            lvl2_path = fullfile(lvl1_path, lvl2_dirs(j).name);
+            target_file = fullfile(lvl2_path, 'AI Data');
+            disp(lvl2_dirs(j).name)
+            if ~isfile(target_file)
+                fprintf('Missing "AI Data" in %s\n', lvl2_path);
+                source_file = fullfile(path.data_slice, lvl1_dirs(i).name, lvl2_dirs(j).name, 'AI Data');
+                disp(source_file)
+                if isfile(source_file)
+                    copyfile(source_file, target_file);
+                    fprintf('Copied "AI Data"');
+                else
+                    warning('Source file not found: %s', fullfile(path.data_slice, lvl2_dirs(j).name));
+                end
+            else
+                fprintf('"AI Data" already exists in %s\n', lvl2_path);
+            end
+        end
+    end
+    if ~exist(path.session_file) || is_rerun(5)
+        %sel_sess = {'173002_Spon30','105118_Spon30','165640_Spon30','174802_Spon30'};
+        sel_sess = {};
+        new_sess = pool_beh_spiking_par_erin('base_path', path.slice, 'sess_ids', sel_sess);
+    end
+
+    if ~exist('sessions', 'var'); sessions = new_sess;
+    else; sessions = [sessions, new_sess]; end
+    clear loaded_data new_sess;
+end
