@@ -15,13 +15,11 @@ DaqRate = 10000;
 Info = textscan(fopen(fullfile(metadata.session_path, 'experimental_parameters.txt')),'%s');
 nrow = str2num(Info{1,1}{6,1}); ncol = str2num(Info{1,1}{3,1});
 if metadata.use_support
-    save_dir = fullfile(metadata.session_path, 'support', metadata.motion_corr);
-    binName = fullfile(save_dir, 'movReg.bin');
-    [mov, nframes] = readBinMov(binName, ncol, nrow);
+    save_dir = fullfile(metadata.session_path, 'support');
 else
     save_dir = metadata.session_path;
 end
-binName = fullfile(save_dir, 'movReg.bin');
+binName = fullfile(metadata.session_path, 'movReg.bin');
 [mov, nframes] = readBinMov(binName, ncol, nrow);
 nremove = 10/dt;
 mov = double(mov(:,:,nremove+1:end));%Remove last 10 ms

@@ -18,7 +18,7 @@ function [] = Run_ext_spike_HipCA1VR_AIBluecrt_FanLab_functionV6_erin(metadata)
 % Linlin Fan 2024-12-12; updated 2025-02-12
 
 if metadata.use_support
-    save_dir = fullfile(metadata.session_path, 'support', metadata.motion_corr);
+    save_dir = fullfile(metadata.session_path, 'support');
 else
     save_dir = metadata.session_path;
 end
