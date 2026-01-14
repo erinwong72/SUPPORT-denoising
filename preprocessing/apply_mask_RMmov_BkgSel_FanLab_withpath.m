@@ -1,9 +1,9 @@
-function [Fmasks,ROImask]=apply_mask_RMmov_BkgSel_FanLab_erin(metadata, mov)
-Info=textscan(fopen(fullfile(metadata.session_path, 'experimental_parameters.txt')),'%s');
+function [Fmasks,ROImask]=apply_mask_RMmov_BkgSel_FanLab_withpath(mov, mov_path)
+Info=textscan(fopen(fullfile(mov_path, 'experimental_parameters.txt')),'%s');
 xoffset = str2num(Info{1,1}{33,1})-288; % assuming mask was clicked on the central quad 2x2 binning - 256 --> 288 576/2
 yoffset = str2num(Info{1,1}{30,1})-288; % assuming mask was clicked on the central quad 2x2 binning - 256 --> 288 
 %cd('../'); load Masks; cd(path);%load EVmask; cd(path);
-load(fullfile(metadata.session_path, '../', 'Masks.mat'));
+load(fullfile(mov_path, '../', 'Masks.mat'));
 num_masks=length(pts_list);
 ROI=cell(1,num_masks);
 for i=1:num_masks;

@@ -1,34 +1,53 @@
 % This is the Pre-processing portion of Run_PCA_ICA_RMmov_FanLab_function
 % Save this as Run_PCA_ICA_RMmov_FanLab_Pre.m
+%
+% Inputs:
+%   is_stim       - logical, whether to get stimulation protocol
+%   use_ring_bkg  - logical (optional), background subtraction method:
+%                   true  = circular ring-based subtraction (for crosstalk removal)
+%                   false = standard corner box background subtraction (default)
+%
+% Outputs:
+%   nCell, t, icsTime_all, icsTimeOrig_all, icsSpace_all, CellImgs, MaskMov
 
-function [nCell, t, icsTime_all, icsTimeOrig_all, icsSpace_all, CellImgs, MaskMov] = ICA_Pre_support(metadata)
+function [nCell, t, icsTime_all, icsTimeOrig_all, icsSpace_all, CellImgs, MaskMov] = ICA_Pre(is_stim, use_ring_bkg,session_path, use_support)
 
 close all; dt = 1;%ms
+if nargin <4
+    use_support = 0;
+end
+% Set default for background subtraction method
+if nargin <3
+    session_path = cd();
+end
+if nargin < 2 || isempty(use_ring_bkg)
+    use_ring_bkg = false;  % Default to standard corner box method for backward compatibility
+end
 
 % Get Stimulation protocol - what if there is no stimulation?
-if metadata.is_stim
-    get_stim_protocol(metadata.session_path);
+if is_stim
+    get_stim_protocol();
 end
 
+if use_support
+    save_dir = fullfile(session_path, 'support');
+else
+    save_dir = session_path;
+end
 % Load motion-corrected movie
 DaqRate = 10000;
-Info = textscan(fopen(fullfile(metadata.session_path, 'experimental_parameters.txt')),'%s');
+Info = textscan(fopen(fullfile(session_path, 'experimental_parameters.txt')),'%s');
 nrow = str2num(Info{1,1}{6,1}); ncol = str2num(Info{1,1}{3,1});
-if metadata.use_support
-    save_dir = fullfile(metadata.session_path, 'support');
-else
-    save_dir = metadata.session_path;
-end
-binName = fullfile(metadata.session_path, 'movReg.bin');
-[mov, nframes] = readBinMov(binName, ncol, nrow);
+binName = 'movReg.bin';
+[mov, nframes] = readBinMov(fullfile(session_path,binName), ncol, nrow);
 nremove = 10/dt;
 mov = double(mov(:,:,nremove+1:end));%Remove last 10 ms
 nframes = size(mov,3);
 RefIm = mean(mov,3);%Avg image
 t = (1:nframes)*dt;%Time vector
 
-[Fmasks, roimask] = apply_mask_RMmov_BkgSel_FanLab_erin(metadata, mov);
-saveas(gca,fullfile(save_dir, 'MaskTraces_RMmov.fig'));
+[Fmasks, roimask] = apply_mask_RMmov_BkgSel_FanLab_withpath(mov, session_path);
+saveas(gca,fullfile(save_dir,'MaskTraces_RMmov.fig'));
 
 Fmask2 = zeros(nframes,1); outrangecell = zeros(1);
 for i = 1:length(roimask)
@@ -40,11 +59,44 @@ for i = 1:length(roimask)
 end
 Fmask2(:,1) = []; outrangecell(1) = []; roimask(:,outrangecell) = [];
 
-% Background subtraction
+% Background subtraction - choose method based on use_ring_bkg parameter
 intensC = Fmask2(:,1:end-1);
-bkg = Fmask2(:,end);
-sbkg = bkg;
-mov2 = mov - repmat(reshape(sbkg,[1,1,nframes]),[ncol,nrow,1]);
+bkg     = Fmask2(:,end);
+
+if use_ring_bkg
+    % Circular ring-based background subtraction
+    % Use the circular ring-based background subtraction strategy from
+    % Run_xtalk_PCA_ICA_RMmov_FanLab_function_automask.m
+    % Build a ring mask around all cell ROIs (exclude the last background ROI)
+    imgSize   = [ncol, nrow];      % [width, height] for generateRingMaskFromROI
+    ringWidth = 3;                 % ring width in pixels
+    gap       = 4;                 % gap between ROI and ring
+    ringMask  = generateRingMaskFromROI(roimask(1:end-1), imgSize, ringWidth, gap);
+    
+    % Compute per-frame mean ring intensity and subtract it from each frame
+    mov2       = zeros(size(mov), 'like', mov);
+    ringSignal = zeros(nframes,1);
+    for t0 = 1:nframes
+        frame = mov(:,:,t0);
+        ringSignal(t0) = mean(frame(ringMask));
+        mov2(:,:,t0)   = frame - ringSignal(t0);
+    end
+    
+    % Optional diagnostic plot of ring mask and signal
+    figure;
+    subplot(1,2,1);
+    imshow(ringMask);
+    title('Ring Mask');
+    subplot(1,2,2);
+    plot(1:nframes, ringSignal);
+    xlabel('Frame'); ylabel('Mean Ring Intensity');
+    title('Ring Signal Over Time');
+    saveas(gcf, fullfile(save_dir,'RingMaskAndSignal.fig'));
+else
+    % Standard corner box background subtraction (original method)
+    sbkg = bkg;
+    mov2 = mov - repmat(reshape(sbkg,[1,1,nframes]),[ncol,nrow,1]);
+end
 
 intens = apply_clicky(roimask, mov2);
 
@@ -128,7 +180,7 @@ for i = 1:nCell
     CellImgs{i} = mean(MaskMov{i},3);
 end
 
-save(fullfile(save_dir, 'ICA_PreResults.mat'),'icsTime_all','icsTimeOrig_all','icsSpace_all','nCell','t','CellImgs','MaskMov','nrowB','ncolB');
+save(fullfile(save_dir,'ICA_PreResults.mat'),'icsTime_all','icsTimeOrig_all','icsSpace_all','nCell','t','CellImgs','MaskMov','nrowB','ncolB');
 %Could probably delete some of these - ie nrowB,ncolB
 end
 
