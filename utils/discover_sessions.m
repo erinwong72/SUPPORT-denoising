@@ -1,4 +1,4 @@
-function sessions = discover_sessions(raw_root, animal_id, save_dir, preprocessed, exclude_session_names)
+function sessions = discover_sessions(raw_root, animal_id, save_dir, exclude_session_names)
 % Discover imaging sessions corresponding to the given animal preparation in the raw data directory.
 
 sessions = struct([]);
@@ -48,7 +48,7 @@ else
         animal_path = fullfile(raw_root, animal);
 
         % Process sessions for this animal
-        sessions = process_animal_sessions(animal_path, animal, sessions, preprocessed, exclude_session_names);
+        sessions = process_animal_sessions(animal_path, animal, sessions, exclude_session_names);
     end
 end
 
@@ -59,7 +59,7 @@ if ~isempty(save_dir) && nargin > 1 && ~isempty(animal_id)
 end
 end
 
-function sessions = process_animal_sessions(animal_path, animal, sessions, preprocessed, exclude_session_names)
+function sessions = process_animal_sessions(animal_path, animal, sessions, exclude_session_names)
     % Process all sessions for a given animal path, based off pool_beh_spiking_par.m but without the analysis after
     
     % Convert exclude_session_names to cell array if it's a string
@@ -74,11 +74,11 @@ function sessions = process_animal_sessions(animal_path, animal, sessions, prepr
     end
     
     % if raw data has already been preprocessed
-    if preprocessed
-        target_file = 'inter_spikeT_spikeW.mat';
-    else; target_file = 'Sq_camera.bin'; 
-    end
-
+    % if preprocessed
+    %     target_file = 'inter_spikeT_spikeW.mat';
+    % else; target_file = 'Sq_camera.bin'; 
+    % end
+    target_file = 'Sq_camera.bin'; 
     date_dirs = dir(animal_path);
     date_dirs = date_dirs([date_dirs.isdir]);
     date_dirs = date_dirs(~startsWith({date_dirs.name}, '.'));
@@ -116,10 +116,11 @@ function sessions = process_animal_sessions(animal_path, animal, sessions, prepr
                 if ~isempty(num); FOVs(end+1) = num; end
             end
 
-            if preprocessed 
-                session_list = struct('anim_id',{}, 'FOV', {}, 'subdir_path', {}, 'subdir_name', {}, 'cell_id', {}, 'num_cells', {});
-            else; session_list = struct('anim_id',{}, 'FOV', {}, 'subdir_path', {}, 'subdir_name', {});
-            end
+            % if preprocessed 
+            %     session_list = struct('anim_id',{}, 'FOV', {}, 'subdir_path', {}, 'subdir_name', {}, 'cell_id', {}, 'num_cells', {});
+            % else; session_list = struct('anim_id',{}, 'FOV', {}, 'subdir_path', {}, 'subdir_name', {});
+            % end
+            session_list = struct('anim_id',{}, 'FOV', {}, 'subdir_path', {}, 'subdir_name', {});
 
             for fov = FOVs
                 fov_path = fullfile(slice_path, sprintf('FOV%d', fov));
@@ -130,25 +131,25 @@ function sessions = process_animal_sessions(animal_path, animal, sessions, prepr
                     subdir_name = dirs(i).name;
                     target_path = fullfile(subdir_path, target_file);
                     if isfile(target_path)
-                        if preprocessed
-                            load(target_path, "nCells");
-                            for cell_id = 1:nCells
-                                session_list(end+1) = struct( ...
-                                    'anim_id', animal, ...
-                                    'FOV', fov, ...
-                                    'subdir_path', subdir_path, ...
-                                    'subdir_name', subdir_name, ...
-                                    'cell_id', cell_id, ...
-                                    'num_cells', nCells ...
-                                    );
-                            end
-                        else; session_list(end+1) = struct( ...
+                        % if preprocessed
+                        %     load(target_path, "nCells");
+                        %     for cell_id = 1:nCells
+                        %         session_list(end+1) = struct( ...
+                        %             'anim_id', animal, ...
+                        %             'FOV', fov, ...
+                        %             'subdir_path', subdir_path, ...
+                        %             'subdir_name', subdir_name, ...
+                        %             'cell_id', cell_id, ...
+                        %             'num_cells', nCells ...
+                        %             );
+                        %     end
+                        % else; 
+                        session_list(end+1) = struct( ...
                                     'anim_id', animal, ...
                                     'FOV', fov, ...
                                     'subdir_path', subdir_path, ...
                                     'subdir_name', subdir_name ...
                                     );
-                        end
                     end
                 end
             end
@@ -156,7 +157,7 @@ function sessions = process_animal_sessions(animal_path, animal, sessions, prepr
             n_sessions = numel(session_list);
             sessions_local = cell(1, n_sessions);
             fprintf('Processing %d total sessions...\n', n_sessions);
-            parfor idx = 1:n_sessions
+            for idx = 1:n_sessions
                 entry = session_list(idx);
                 try
                     sess = struct();
@@ -164,11 +165,11 @@ function sessions = process_animal_sessions(animal_path, animal, sessions, prepr
                     sess.session_path = entry.subdir_path;
                     sess.session_name = entry.subdir_name;
                     sess.FOV = entry.FOV;
-                    if preprocessed
-                        sess.cell_id = entry.cell_id;
-                        sess.fov_num_cells = entry.num_cells;
-                        sess.cell_hash = gen_cell_hash(sess.session_path, sess.cell_id)
-                    end
+                    % if preprocessed
+                    %     sess.cell_id = entry.cell_id;
+                    %     sess.fov_num_cells = entry.num_cells;
+                    %     sess.cell_hash = gen_cell_hash(sess.session_path, sess.cell_id);
+                    % end
                     sessions_local{idx} = sess;
                     fprintf('✓ [%d/%d] Success: %s\n', idx, n_sessions, entry.subdir_name);
                 catch ME

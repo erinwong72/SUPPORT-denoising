@@ -1,4 +1,4 @@
-function sessions = generate_sessions_struct(discovered_sessions, path, sel_FOVs, sel_slices, waveform_stim, save_flag)
+function sessions = generate_sessions_struct(discovered_sessions, path, sel_FOVs, sel_slices, save_flag)
 % Inputs:
 %   discovered_sessions - struct array from discover_sessions.m with fields:
 %                           anim_id, session_path, session_name, FOV, cell_id,
@@ -23,20 +23,31 @@ function sessions = generate_sessions_struct(discovered_sessions, path, sel_FOVs
 %                       cell_hash
 
 %% Try loading cached sessions
-if nargin >= 2 && isstruct(path) && isfield(path, 'save_dir') && ~isempty(path.save_dir)
-    sessions_file = fullfile(path.save_dir, 'sessions.mat'); %'sessions_modified.mat'
+% if nargin >= 2 && isstruct(path) && isfield(path, 'save_dir') && ~isempty(path.save_dir)
+%     sessions_file = fullfile(path.save_dir, 'sessions.mat'); %'sessions_modified.mat'
     
-    if exist(sessions_file, 'file')
-        load(sessions_file, 'sessions');
+%     if exist(sessions_file, 'file')
+%         load(sessions_file, 'sessions');
         
-        return
-    end
-end
+%         return
+%     end
+% end
 
 %% Filter discovered sessions based on criteria
 
 % Initialize filter mask (true = keep, false = exclude)
 keep_mask = true(size(discovered_sessions));
+
+% filter by session id (path.sess_ids)
+if nargin >= 2 && isstruct(path) && isfield(path, 'sess_ids') && ~isempty(path.sess_ids)
+    % get session id from session_path
+    session_ids = {discovered_sessions.session_path};
+    % extract session id from session_path using strsplit
+    session_ids = cellfun(@(x) strsplit(x, filesep), session_ids, 'UniformOutput', false);
+    session_ids = cellfun(@(x) x{end-3}, session_ids, 'UniformOutput', false);
+    % check if path.sess_ids is in session_ids
+    keep_mask = keep_mask & ismember(session_ids, path.sess_ids);
+end
 
 % Filter by FOV
 if nargin >= 3 && ~isempty(sel_FOVs)
@@ -75,18 +86,18 @@ if nargin >= 4 && ~isempty(sel_slices)
 end
 
 % Filter by waveform_stim (session name must contain at least one of the strings)
-if nargin >= 5 && ~isempty(waveform_stim)
-    session_names = {discovered_sessions.session_name};
-    if iscell(waveform_stim)
-        stim_mask = false(size(session_names));
-        for i = 1:numel(waveform_stim)
-            stim_mask = stim_mask | contains(session_names, waveform_stim{i});
-        end
-        keep_mask = keep_mask & stim_mask;
-    elseif ischar(waveform_stim) || isstring(waveform_stim)
-        keep_mask = keep_mask & contains(session_names, waveform_stim);
-    end
-end
+% if nargin >= 5 && ~isempty(waveform_stim)
+%     session_names = {discovered_sessions.session_name};
+%     if iscell(waveform_stim)
+%         stim_mask = false(size(session_names));
+%         for i = 1:numel(waveform_stim)
+%             stim_mask = stim_mask | contains(session_names, waveform_stim{i});
+%         end
+%         keep_mask = keep_mask & stim_mask;
+%     elseif ischar(waveform_stim) || isstring(waveform_stim)
+%         keep_mask = keep_mask & contains(session_names, waveform_stim);
+%     end
+% end
 
 % Apply filter
 sessions = discovered_sessions(keep_mask);

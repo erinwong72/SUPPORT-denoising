@@ -1,4 +1,4 @@
-function sessions = discover_sessions(raw_root, animal_prep, save_dir, exclude_session_names)
+function sessions = discover_sessions(raw_root, animal_id, save_dir, preprocessed, exclude_session_names)
 % Discover imaging sessions corresponding to the given animal preparation in the raw data directory.
 
 sessions = struct([]);
@@ -7,16 +7,16 @@ if nargin < 3; save_dir = []; end
 if nargin < 4; exclude_session_names = []; end
 
 % see if the sessions for the animal_prep are already in the save_dir, if so, load them and return
-save_name = sprintf('sessions_%s.mat', animal_prep);
+save_name = sprintf('sessions_%s.mat', animal_id);
 if isfile(fullfile(save_dir, save_name)); load(fullfile(save_dir, save_name), 'sessions'); return; end
 
 % Handle raw_root as either a string or a containers.Map
 if isa(raw_root, 'containers.Map')
     % If raw_root is a map, get animals from animal_prep prefix or all keys in the map
     map_keys = keys(raw_root);
-    if nargin > 1 && ~isempty(animal_prep)
+    if nargin > 1 && ~isempty(animal_id)
         % Filter map keys to those that start with animal_prep
-        animal_list = map_keys(startsWith(map_keys, animal_prep));
+        animal_list = map_keys(startsWith(map_keys, animal_id));
     else
         animal_list = map_keys;
     end
@@ -39,8 +39,8 @@ else
     animal_dirs = animal_dirs(~startsWith({animal_dirs.name}, '.'));
 
     % Filter for specified animal preparation if provided (prefix matching)
-    if nargin > 1 && ~isempty(animal_prep)
-        animal_dirs = animal_dirs(startsWith(lower({animal_dirs.name}), animal_prep));
+    if nargin > 1 && ~isempty(animal_id)
+        animal_dirs = animal_dirs(startsWith(lower({animal_dirs.name}), lower(animal_id)));
     end
 
     for a = 1:numel(animal_dirs)
@@ -48,18 +48,18 @@ else
         animal_path = fullfile(raw_root, animal);
 
         % Process sessions for this animal
-        sessions = process_animal_sessions(animal_path, animal, sessions, exclude_session_names);
+        sessions = process_animal_sessions(animal_path, animal, sessions, preprocessed, exclude_session_names);
     end
 end
 
 % Save sessions as a unit/building block session
-if ~isempty(save_dir) && nargin > 1 && ~isempty(animal_prep)
-    save_name = sprintf('sessions_%s.mat', animal_prep);
+if ~isempty(save_dir) && nargin > 1 && ~isempty(animal_id)
+    save_name = sprintf('sessions_%s.mat', animal_id);
     save(fullfile(save_dir, save_name), "sessions");
 end
 end
 
-function sessions = process_animal_sessions(animal_path, animal, sessions, target_file, exclude_session_names)
+function sessions = process_animal_sessions(animal_path, animal, sessions, preprocessed, exclude_session_names)
     % Process all sessions for a given animal path, based off pool_beh_spiking_par.m but without the analysis after
     
     % Convert exclude_session_names to cell array if it's a string
@@ -74,9 +74,10 @@ function sessions = process_animal_sessions(animal_path, animal, sessions, targe
     end
     
     % if raw data has already been preprocessed
-    if target_file == 'inter_spikeT_spikeW.mat'
-        preprocessed = 1;
-    else; preprocessed = 0; end
+    if preprocessed
+        target_file = 'inter_spikeT_spikeW.mat';
+    else; target_file = 'Sq_camera.bin'; 
+    end
 
     date_dirs = dir(animal_path);
     date_dirs = date_dirs([date_dirs.isdir]);
@@ -145,8 +146,9 @@ function sessions = process_animal_sessions(animal_path, animal, sessions, targe
                                     'anim_id', animal, ...
                                     'FOV', fov, ...
                                     'subdir_path', subdir_path, ...
-                                    'subdir_name', subdir_name, ...
+                                    'subdir_name', subdir_name ...
                                     );
+                        end
                     end
                 end
             end
@@ -154,7 +156,7 @@ function sessions = process_animal_sessions(animal_path, animal, sessions, targe
             n_sessions = numel(session_list);
             sessions_local = cell(1, n_sessions);
             fprintf('Processing %d total sessions...\n', n_sessions);
-            parfor idx = 1:n_sessions
+            for idx = 1:n_sessions
                 entry = session_list(idx);
                 try
                     sess = struct();
@@ -166,10 +168,11 @@ function sessions = process_animal_sessions(animal_path, animal, sessions, targe
                         sess.cell_id = entry.cell_id;
                         sess.fov_num_cells = entry.num_cells;
                         sess.cell_hash = gen_cell_hash(sess.session_path, sess.cell_id);
+                    end
                     sessions_local{idx} = sess;
-                    fprintf('✓ [%d/%d] Success: %s Cell %d\n', idx, n_sessions, entry.subdir_name, entry.cell_id);
+                    fprintf('✓ [%d/%d] Success: %s\n', idx, n_sessions, entry.subdir_name);
                 catch ME
-                    fprintf('✗ [%d/%d] Failed: %s Cell %d — %s\n', idx, n_sessions, entry.subdir_name, entry.cell_id, ME.message);
+                    fprintf('✗ [%d/%d] Failed: %s — %s\n', idx, n_sessions, entry.subdir_name, ME.message);
                 end
             end
             new_sess = [sessions_local{:}];
