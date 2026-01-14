@@ -1,3 +1,11 @@
 #!/bin/bash
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate SUPPORT
 
-nohup python -m src.train --exp_name cck-gevi_post --noisy_data "/mnt/fanlab/Labmembers/Kohl/Support/cck-gevi/dataset/train/post-motion" --n_epochs 50 --auto_patch_size --is_folder > /dev/null 2>&1 &
+## YOU ONLY NEED TO CHANGE THESE VARIABLES
+export MODEL_NAME="cck-gevi_post" # change the name to what you want your model to be called (e.g. basket cell)
+export TRAINING_DATA="/mnt/fanlab/Labmembers/Kohl/Support/cck-gevi/dataset/train/post-motion" # make sure to add /mnt/fanlab in front of labmembers
+
+## training
+nohup bash -c 'set -e; python -m src.train --exp_name "$MODEL_NAME" --noisy_data "$TRAINING_DATA" --n_epochs 50 --auto_patch_size --is_folder' \
+> /dev/null 2>&1 &
