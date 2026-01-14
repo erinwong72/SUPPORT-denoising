@@ -23,9 +23,13 @@ parts = strsplit(base_path, filesep);
 anim_id = parts{end-2}; %'cck-gevi-w05';
 sess_id = parts{end-1}; %'Running9_15_2025';
 slice_id = parts{end}; %'slice1';
-if parts{1} == "Z:"; os = 0;
-else; os = 1;
+
+if ismac || isunix
+    root_path = fullfile('/Volumes/fanlab');
+elseif ispc
+    root_path = fullfile('Z:');
 end
+
 if isempty(FOVs)
     all_entries = dir(base_path);
     fov_dirs = all_entries([all_entries.isdir] & startsWith({all_entries.name}, 'FOV'));
@@ -169,9 +173,9 @@ if ~isempty(session_list)
     
     %% Merge and Save
     if ~isempty(sessions)
-        paths = get_paths_erin(entry.subdir_path, os);
+        paths = get_paths(entry.subdir_path);
     else
-        paths = get_paths_erin(base_path, os);
+        paths = get_paths(base_path);
     end
     save(fullfile(paths.save,'support_analysis_motion.mat'), 'sessions');
     

@@ -5,8 +5,7 @@
 clear; close all;
 
 %% Session Parameters
-rng(123, 'twister');
-% Automatically detect OS: Windows uses Z:\, macOS/Linux use /Volumes/fanlab
+% % Automatically detect OS: Windows uses Z:\, macOS/Linux use /Volumes/fanlab
 if ismac || isunix
     root_path = fullfile('/Volumes/fanlab');
 elseif ispc
@@ -17,11 +16,11 @@ motion_corr = 'post-motion'; % 'pre-motion' or 'post-motion'
 compare_motion = 1; % compare pre vs post-motion performance
 
 %% generating paths
-addpath(genpath(fullfile(root_path,'Labmembers','Kohl','Code')));
-addpath(genpath(fullfile(root_path,'Labmembers','Erin','code')));
-addpath(genpath(fullfile(root_path,'Computer Code','Image Processing')));
-addpath(genpath(fullfile(root_path,'Computer Code','NoRmCorre')));
-addpath(genpath(fullfile(root_path,'Computer Code','Fan Lab')));
+safe_addpath(fullfile(root_path,'Labmembers','Kohl','Code'));
+safe_addpath(fullfile(root_path,'Labmembers','Erin','code'));
+safe_addpath(fullfile(root_path,'Computer Code','Image Processing'));
+safe_addpath(fullfile(root_path,'Computer Code','NoRmCorre'));
+safe_addpath(fullfile(root_path,'Computer Code','Fan Lab'));
 
 %% setting directories
 path.root.parent = fullfile(root_path, 'Labmembers','Kohl','CCK');
@@ -77,13 +76,13 @@ if isempty(sessions) || is_rerun
         animal_prep = animal_preps{prep};
         
         % Try to load saved sessions first
-        path.support_sessions_file = sprintf('support_sessions_%s.mat', animal_prep);
+        path.support_sessions_file = sprintf('sessions_%s.mat', animal_prep);
         if exist(fullfile(path.root.parent, path.support_sessions_file), 'file')
             load(fullfile(path.root.parent, path.support_sessions_file), 'support_sessions');
             continue; %skip this animal prep
         end
-        path.sessions_file = sprintf('sessions_%s.mat', animal_prep);
-        sessions_path = fullfile(path.root.parent, path.sessions_file);
+        % path.sessions_file = sprintf('sessions_%s.mat', animal_prep);
+        % sessions_path = fullfile(path.root.parent, path.sessions_file);
         
         if exist(sessions_path, 'file') && ~is_rerun
             fprintf('Loading saved sessions: %s\n', path.sessions_file);

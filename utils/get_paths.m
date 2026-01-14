@@ -1,4 +1,4 @@
-function [path] = get_paths_erin(ref_path, os)
+function [path] = get_paths_erin(ref_path)
 % Function to parse input paths based on which operating system is used
 
 path = struct();
@@ -18,7 +18,7 @@ path.fov  = path.parts{end-1};
 path.rec   = path.parts{end};
 
 %path.cellLabel = sprintf('%s %s %s %s %s Cell#%d', path.anim, path.sess_date, path.slic, path.fov, path.rec, cellID);
-if os == 0; path.save = fullfile(fullfile(path.parts{1:end-2}),'Figures');
+if ispc; path.save = fullfile(fullfile(path.parts{1:end-2}),'Figures');
 else; path.save = fullfile(fullfile('/', path.parts{1:end-2}),'Figures');
 end
 [~,~] = mkdir(path.save);

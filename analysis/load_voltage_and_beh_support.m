@@ -23,7 +23,7 @@ p.parse(path_mov, varargin{:});
 opts = p.Results;
 
 % ---- Paths ----
-path = get_paths_erin(char(opts.path_mov), opts.os);
+path = get_paths(char(opts.path_mov), opts.os);
 
 % ---- Behavior ----
 beh = load_beh(path.beh);
