@@ -45,7 +45,7 @@ custom_raw_roots = containers.Map( ...
       fullfile(root_path,'Labmembers','Kohl','CCK','cck-gevi-w05') } ...
 );
 
-exclude = {'ExpressionCheck'};
+% exclude = {'ExpressionCheck'};
 target_file = "denoised.tiff";
 
 animal_preps = {'cck-gevi'};
