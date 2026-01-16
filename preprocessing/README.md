@@ -2,7 +2,7 @@
 
 This directory contains scripts for preprocessing voltage imaging data in the SUPPORT-denoising pipeline. The preprocessing pipeline performs motion correction, SUPPORT denoising preparation, ICA/PCA analysis, and spike thresholding.
 
-**jump to [[preprocessing/README#Workflow|workflow]] for instructions on how to set up for different use-cases (with and without SUPPORT).**
+**jump to the [workflow](#workflow) section for instructions on how to set up for different use-cases (with and without SUPPORT).**
 ## Overview
 
 The preprocessing pipeline consists of five main steps:
@@ -53,7 +53,7 @@ If the ssh key is set up properly, matlab will print "SSH works".
 1. Run batch_preprocess.m with `use_support = 0`, `prepro = [1 1 1 1 1 1]`
 2. Motion correction creates movReg.bin
 3. SUPPORT data generation creates support/raw.tiff
-4. Run SUPPORT inference to generate support/denoised.tiff (make sure to [[preprocessing/README#generating SSH key|generate an SSH key]] first)
+4. Run SUPPORT inference to generate support/denoised.tiff (make sure to [generate a ssh key](#generating-ssh-key) first)
 5. ICA Pre processes support/denoised.tiff
 6. ICA Choose for manual IC selection
 7. Spike thresholding on selected ICs
