@@ -54,10 +54,8 @@ for i = 1:nCell
 
 %%
 W = mean(MaskMov{i},3);
-W = (W - min(W(:))) / (max(W(:)) - min(W(:)));
-thr = 0.4 * max(W(:));
+thr = 0.9 * max(W(:));
 W(W < thr) = 0;
-figure(); imagesc(W);
 
 movie = MaskMov{1};
 

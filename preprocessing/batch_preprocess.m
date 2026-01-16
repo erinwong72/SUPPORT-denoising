@@ -147,6 +147,7 @@ background=0; % stream into matlab command window
 for a = 1:numel(path.anim_ids)
     for s = 1:numel(path.sess_ids)
         data_path = fullfile(path.root.data, path.anim_ids{a}, path.sess_ids{s});
+        data_path = replace(data_path, root_path, '/mnt/fanlab');
         run_inference(username, data_path, model, background);
     end
 end
