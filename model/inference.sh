@@ -12,6 +12,7 @@ BACKGROUND=$4 # run in the background if 1, else run in foreground
 # get paths and everything passed in from matlab script
 ROOT=/home/$USER/
 
+MODEL_PATH="/mnt/Labmembers/Erin/models/$MODEL.pth"
 if conda env list | awk '{print $1}' | grep -Fxq "SUPPORT"; then
     conda activate SUPPORT
     echo "Activated SUPPORT environment"
@@ -26,7 +27,7 @@ else
     echo "Created and activated SUPPORT environment"
 fi
 
-cd $ROOT/SUPPORT/SUPPORT-denoising/model/
+cd $ROOT/SUPPORT-denoising/model/
 
 export DATA_DIR #="/mnt/fanlab/Labmembers/Kohl/CCK/cck-inhDSI-w08/2026-01-13-VR-V_blue/" # where output from support is saved
 
@@ -35,17 +36,17 @@ if [ ! -d "$LOG_DIR" ]; then
     mkdir -p "$LOG_DIR"
 fi
 
-LOG="$LOG_DIR/inference_$(date +%Y%m%d_%H%M%S).log"
+LOG="$LOG_DIR/inference_$MODEL_$(date +%Y%m%d_%H%M%S).log"
 export LOG
-export MODEL
+export MODEL_PATH
 export GPU_ID=0
 
 if [ "$BACKGROUND" -eq 0 ]; then
     echo "Running inference in foreground..."
-    python -u -m inference --raw_path "$DATA_DIR" --model_path "$MODEL" --gpu "$GPU_ID" 2>&1 | tee "$LOG"
+    python -u -m inference --raw_path "$DATA_DIR" --model_path "$MODEL_PATH" --gpu "$GPU_ID" 2>&1 | tee "$LOG"
 else
     echo "Running inference in background..."
-    nohup bash -c 'set -e; python -m inference --raw_path "$DATA_DIR" --model_path "$MODEL" --gpu "$GPU_ID"' \
+    nohup bash -c 'set -e; python -m inference --raw_path "$DATA_DIR" --model_path "$MODEL_PATH" --gpu "$GPU_ID"' \
     2>&1 | tee "$LOG" &
     echo "Inference started in background. Check $LOG for progress."
 fi
