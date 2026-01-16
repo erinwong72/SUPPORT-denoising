@@ -10,4 +10,4 @@ general use-cases:
 1. Training a denoising model for a new cell type
     a. copy SUPPORT folder from Roshni's labmembers folder and place it in the same *parent* directory on the compute server as this repository
     b. Analyzing the newly trained model - refer to code in **analysis**
-2. Applying a pre-trained model on new imaging data - refer to the [preprocessing guide](/preprocessing#readme) for more instructions
+5. Applying a pre-trained model on new imaging data - refer to the [preprocessing guide](/preprocessing#readme) for more instructions
