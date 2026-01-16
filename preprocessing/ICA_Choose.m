@@ -116,7 +116,27 @@ for i = 1:nCell
     plot(t/1000, IntensOrig(:,i), 'r'); ylabel('F'); hold on;
 end
 
-Bh = load(fullfile(save_dir, 'AI Data'));
+ai_data_path = fullfile(session_path, 'AI Data');
+try
+    Bh = load(ai_data_path);
+catch ME
+    % If MAT load fails (e.g., "not a binary mat-file"), try loading as ASCII
+    if contains(ME.message, 'not a binary mat-file') || contains(ME.message, 'ASCII')
+        try
+            Bh = load(ai_data_path, '-ASCII');
+        catch ME2
+            error('Unable to load AI Data file as ASCII: %s\nError: %s', ai_data_path, ME2.message);
+        end
+    else
+        % For other errors, try ASCII as fallback
+        try
+            Bh = load(ai_data_path, '-ASCII');
+        catch ME2
+            error('Unable to load AI Data file: %s\nOriginal error: %s\nASCII load error: %s', ...
+                ai_data_path, ME.message, ME2.message);
+        end
+    end
+end
 Bh2 = Bh(:,10+1:end); % Assumes dt = 1 ms and removal of first 10 ms
 DaqRate = 10000;
 tdaq = (1:size(Bh2,2)) / DaqRate;
