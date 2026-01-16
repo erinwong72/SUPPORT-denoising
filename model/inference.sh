@@ -22,7 +22,17 @@ else
     #     # then create conda directory using .yml file
     #     git clone https://github.com/erinwong72/SUPPORT-denoising.git $ROOT
     # fi
-    conda env create -f $ROOT/SUPPORT-denoising/model/support_model.yml -n SUPPORT
+    # download conda if not already installed
+    if ! command -v conda &> /dev/null
+    then
+        echo "Conda could not be found, installing Miniconda..."
+        wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O $ROOT/miniconda.sh
+        bash $ROOT/miniconda.sh -b -p $ROOT/miniconda3
+        rm $ROOT/miniconda.sh
+        source $ROOT/miniconda3/etc/profile.d/conda.sh
+        echo "Miniconda installed successfully."
+    fi
+    conda env create -f $ROOT/SUPPORT-denoising/model/env.yml -n SUPPORT
     conda activate SUPPORT
     echo "Created and activated SUPPORT environment"
 fi
