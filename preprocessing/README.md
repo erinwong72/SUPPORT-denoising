@@ -7,30 +7,59 @@ This directory contains scripts for preprocessing voltage imaging data in the SU
 The preprocessing pipeline consists of five main steps:
 1. **Motion Correction** - Corrects for motion artifacts in raw imaging data
 2. **SUPPORT Data Generation** - Prepares data for SUPPORT denoising model
+3. **SUPPORT inference** - applies trained SUPPORT model on the noisy data, producing denoised data
 3. **ICA Pre** - Performs PCA/ICA decomposition on masked cell regions
 4. **ICA Choose** - Interactive selection of best independent components
 5. **Spike Thresholding** - Detects and characterizes action potentials
+
+### generating SSH key
+This is necessary if you want to enable end to end preprocessing (without leaving matlab), specifically for step 3 (running a trained model on the noisy data), which has to ssh to the compute server and run a bash script.
+
+Do this on your local computer (wherever you are running matlab):
+1. Find or generate an SSH key:
+```bash
+# run this to find existing keys
+ls -al ~/.ssh
+```
+If you see a file like `id_rsa`, `id_ed25519`, or `id_ecdsa`, you already have SSH key(s).
+
+If not, create one, replacing it with an appropriate name:
+```bash
+ssh-keygen -t ed25519 -C "name_of_key"
+```
+2. Copy key to remote host, replacing `username` with your username and `ip_address` with our server's ip address. This will prompt you for your password.
+```bash
+ssh-copy-id username@ip_address
+```
+3. Test that this is properly set up by running the following in matlab, replacing `username` and `ip_address` again:
+```matlab
+cmd = sprintf('ssh -o StrictHostKeyChecking=no %s@%s "echo SSH works"', username, ip_address);
+status = system(cmd, '-echo');
+```
+If the ssh key is set up properly, matlab will print "SSH works".
 
 ## Main Scripts
 
 ### batch_preprocess.m
 
-**Purpose**: Main orchestration script that runs the complete preprocessing pipeline.
+**Purpose**: Main script that runs the complete preprocessing pipeline.
 
 **Functionality**:
 - Automatically detects OS and sets appropriate root paths (Windows: Z:\, macOS/Linux: /Volumes/fanlab)
 - Discovers sessions from specified animal IDs and session IDs
-- Executes preprocessing steps based on the prepro array configuration
+- Executes preprocessing steps based on the prepro array configuration, including applying the trained model to imaging data, denoising it without you having to leave matlab. Before this step, make sure that you have generated an ssh key for the server so matlab can log in without needing a password.
 - Handles both standard preprocessing and SUPPORT-integrated preprocessing workflows
 
 **Configuration**:
-- prepro array: [1 1 1 1 1] controls which steps to run:
+- prepro array: [1 1 1 1 1 1] controls which steps to run:
   - prepro(1): Motion Correction
   - prepro(2): SUPPORT data generation
+  - prepro(3): SUPPORT inference on noisy data
   - prepro(3): ICA Pre
   - prepro(4): ICA Choose
   - prepro(5): Spike Thresholding
 - is_stim: Logical flag for stimulation protocol (affects blueStim parameter)
+- use_support: Logical flag for if you want to denoise and process the files
 - path.anim_ids: Cell array of animal IDs to process
 - path.sess_ids: Cell array of session IDs to process
 
@@ -40,7 +69,7 @@ The preprocessing pipeline consists of five main steps:
 
 **Output Files**:
 - movReg.bin: Motion-corrected movie (in session directory)
-- support/raw.tiff: Raw movie in TIFF format for SUPPORT (if prepro(2) == 1)
+- support/raw.tiff: Raw movie in TIFF format for SUPPORT (if use_support == 1)
 - support/denoised.tiff: Denoised movie from SUPPORT (must be generated externally)
 - sessions_for_support.txt: List of session paths for Python inference script
 

@@ -47,13 +47,15 @@ animal_type = 'cck-inhDSI';
 exclude = {};
 
 %% set which steps for preprocessing to run
-prepro = [1 1 1 1 1]; % 1 if running the step, 0 if not
+prepro = [1 1 1 1 1 1]; % 1 if running the step, 0 if not
 % 1: Motion Correction
 % 2: SUPPORT (generate data for model to run)
-% 3: ICA Pre
-% 4: ICA Choose
-% 5: Spike Thresholding
+% 3: SUPPORT inference (apply trained model on data)
+% 4: ICA Pre
+% 5: ICA Choose
+% 6: Spike Thresholding
 %preprocessed = 0; % if haven't already analyzed raw data and is the first time preprocessing
+use_support = 1;
 is_stim = 1;
 if is_stim; blueStim = 'AO'; else blueStim = ''; end
 
@@ -92,7 +94,7 @@ fclose(fid);
 for s = 1:numel(sel_sessions)
     session_path = sel_sessions(s).session_path;
     fprintf('Processing session: %s\n', session_path);
-    if prepro(2); save_dir = fullfile(session_path, 'support'); else; save_dir = session_path; end % Set subdir_path for processing
+    if use_support; save_dir = fullfile(session_path, 'support'); else; save_dir = session_path; end % Set subdir_path for processing
 
     %% Motion Correction
     motion_corr_output = 'movReg.bin';
@@ -140,40 +142,42 @@ end
 
 % KEEP GOING! YOU'RE DOING GREAT :D
 % make sure you have SSH key set up for compute server, refer to README for instructions
-username = 'knswift';
-model = 'cck-gevi';
-background=0; % stream into matlab command window
+if prepro(3)
+    username = 'knswift';
+    model = 'cck-gevi';
+    background=0; % stream into matlab command window
 
-for a = 1:numel(path.anim_ids)
-    for s = 1:numel(path.sess_ids)
-        data_path = fullfile(path.root.data, path.anim_ids{a}, path.sess_ids{s});
-        % changing path to be compatible for the server
-        data_path = replace(data_path, root_path, '/mnt/fanlab');
-        run_inference(username, data_path, model, background);
+    for a = 1:numel(path.anim_ids)
+        for s = 1:numel(path.sess_ids)
+            data_path = fullfile(path.root.data, path.anim_ids{a}, path.sess_ids{s});
+            % changing path to be compatible for the server
+            data_path = replace(data_path, root_path, '/mnt/fanlab');
+            run_inference(username, data_path, model, background);
+        end
     end
 end
 %% continue after SUPPORT has inferenced on raw data
 for s = 1:numel(sel_sessions)
     session_path = sel_sessions(s).session_path;
     fprintf('Processing session: %s\n', session_path);
-    if prepro(2); save_dir = fullfile(session_path, 'support'); else; save_dir = session_path; end % Set subdir_path for processing
+    if use_support; save_dir = fullfile(session_path, 'support'); else; save_dir = session_path; end % Set subdir_path for processing
     %% ICA
-    if any(prepro(3:4))
-        if prepro(2) && ~isfile(fullfile(session_path, 'support', 'denoised.tiff'))
+    if any(prepro(4:5))
+        if use_support && ~isfile(fullfile(session_path, 'support', 'denoised.tiff'))
             continue;
         else
             try
                 %ICA Pre
                 if prepro(3) && ~isfile(fullfile(save_dir,'ICA_PreResults.mat'))
                     disp("Running ICA_Pre")
-                    ICA_Pre(is_stim, use_ring_bkg, session_path, prepro(2));
+                    ICA_Pre(is_stim, use_ring_bkg, session_path, use_support);
                 end
         
                 %ICA Choose
         
                 if prepro(4) && isfile(fullfile(save_dir,'ICA_PreResults.mat')) && ~isfile(fullfile(save_dir,'Fig_intens_ICA.fig'))
                     disp("Running ICA_Choose")
-                    ICA_Choose(session_path, prepro(2));
+                    ICA_Choose(session_path, use_support);
                 end
                 fprintf('Success: %s\n', session_path);
             catch ME
@@ -193,7 +197,7 @@ for s = 1:numel(sel_sessions)
                 set(gcf, 'Units', 'Normalized', 'OuterPosition', [0 0 1 1]);
     
     
-                Run_ext_spike_HipCA1VR_AIBluecrt_FanLab_functionV6_withpath(blueStim, session_path, prepro(2)); 
+                Run_ext_spike_HipCA1VR_AIBluecrt_FanLab_functionV6_withpath(blueStim, session_path, use_support); 
     
                 disp(['success at ', session_path]);
                 close all
