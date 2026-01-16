@@ -9,6 +9,7 @@ organization:
 general use-cases:
 1. Training a denoising model for a new cell type
     1. copy SUPPORT folder from Roshni's labmembers folder and place it in the same *parent* directory on the compute server as this repository
-    2. Analyzing the newly trained model - refer to code in **analysis**
+    2. setup conda, install SUPPORT environment; run `train.sh` in the [model directory](/model)
+    3. Analyzing the newly trained model - refer to code in the [analysis directory](/analysis)
 
 2. Applying a pre-trained model on new imaging data - refer to the [preprocessing guide](/preprocessing#readme) for more instructions
