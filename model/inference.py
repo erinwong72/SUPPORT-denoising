@@ -17,7 +17,7 @@ def batch_inference(paths_to_process, model):
         if tif_path.startswith("Z:"):
             tif_path = tif_path.replace("Z:", "")
             tif_path = tif_path.replace("\\", "/")
-        tif_path = f'/mnt/fanlab{tif_path}'
+        tif_path = tif_path.replace(f'/Volumes', '/mnt')
         try:
             raw_filename = os.path.join(tif_path, "support", "raw.tiff")
             output_filename = os.path.join(tif_path, "support", "denoised.tiff")

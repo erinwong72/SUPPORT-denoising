@@ -12,7 +12,7 @@ BACKGROUND=$4 # run in the background if 1, else run in foreground
 # get paths and everything passed in from matlab script
 ROOT=/home/$USER/
 
-MODEL_PATH="/mnt/Labmembers/Erin/models/$MODEL.pth"
+MODEL_PATH="/mnt/fanlab/Labmembers/Erin/models/$MODEL.pth"
 if conda env list | awk '{print $1}' | grep -Fxq "SUPPORT"; then
     conda activate SUPPORT
     echo "Activated SUPPORT environment"
@@ -36,7 +36,7 @@ if [ ! -d "$LOG_DIR" ]; then
     mkdir -p "$LOG_DIR"
 fi
 
-LOG="$LOG_DIR/inference_$MODEL_$(date +%Y%m%d_%H%M%S).log"
+LOG="$LOG_DIR/inference_$(date +%Y%m%d_%H%M%S).log"
 export LOG
 export MODEL_PATH
 export GPU_ID=0
