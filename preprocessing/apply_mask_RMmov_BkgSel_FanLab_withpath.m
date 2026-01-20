@@ -3,7 +3,10 @@ Info=textscan(fopen(fullfile(mov_path, 'experimental_parameters.txt')),'%s');
 xoffset = str2num(Info{1,1}{33,1})-288; % assuming mask was clicked on the central quad 2x2 binning - 256 --> 288 576/2
 yoffset = str2num(Info{1,1}{30,1})-288; % assuming mask was clicked on the central quad 2x2 binning - 256 --> 288 
 %cd('../'); load Masks; cd(path);%load EVmask; cd(path);
-load(fullfile(mov_path, '../', 'Masks.mat'));
+parent_dir = fileparts(mov_path);
+mask_path = fullfile(parent_dir, 'Masks.mat');
+load(mask_path);
+%sprintf(fullfile(mov_path, '../', 'Masks.mat'));
 num_masks=length(pts_list);
 ROI=cell(1,num_masks);
 for i=1:num_masks;

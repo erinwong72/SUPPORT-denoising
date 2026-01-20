@@ -10,39 +10,43 @@
 % Outputs:
 %   nCell, t, icsTime_all, icsTimeOrig_all, icsSpace_all, CellImgs, MaskMov
 
-function [nCell, t, icsTime_all, icsTimeOrig_all, icsSpace_all, CellImgs, MaskMov] = ICA_Pre(is_stim, use_ring_bkg,session_path, use_support)
+function [nCell, t, icsTime_all, icsTimeOrig_all, icsSpace_all, CellImgs, MaskMov] = ICA_Pre(session_path,is_stim, use_ring_bkg, use_support)
 
 close all; dt = 1;%ms
-if nargin <4
-    use_support = 0;
-end
 % Set default for background subtraction method
-if nargin <3
+if isempty(session_path)
     session_path = cd();
 end
 if nargin < 2 || isempty(use_ring_bkg)
-    use_ring_bkg = false;  % Default to standard corner box method for backward compatibility
+    use_ring_bkg = 0;  % Default to standard corner box method for backward compatibility
 end
 
 % Get Stimulation protocol - what if there is no stimulation?
 if is_stim
-    get_stim_protocol();
+    get_stim_protocol(session_path);
 end
+
+% Load motion-corrected movie
+DaqRate = 10000;
 
 if use_support
     save_dir = fullfile(session_path, 'support');
+    mov = loadtiff(fullfile(save_dir, "denoised.tiff"));
+    imshow(mov(:,:,10), [])
+    mov_raw = loadtiff(fullfile(save_dir, "raw.tiff"));
+    imshow(mov_raw(:,:,10), [])
+    sprintf("loaded mov file: %s", fullfile(save_dir, "denoised.tiff"))
 else
     save_dir = session_path;
+    Info = textscan(fopen(fullfile(session_path, 'experimental_parameters.txt')),'%s');
+    nrow = str2num(Info{1,1}{6,1}); ncol = str2num(Info{1,1}{3,1});
+    binPath = fullfile(save_dir,'movReg.bin');
+    [mov, nframes] = readBinMov(binPath, ncol, nrow);
 end
-% Load motion-corrected movie
-DaqRate = 10000;
-Info = textscan(fopen(fullfile(session_path, 'experimental_parameters.txt')),'%s');
-nrow = str2num(Info{1,1}{6,1}); ncol = str2num(Info{1,1}{3,1});
-binName = 'movReg.bin';
-[mov, nframes] = readBinMov(fullfile(session_path,binName), ncol, nrow);
+
 nremove = 10/dt;
-mov = double(mov(:,:,nremove+1:end));%Remove last 10 ms
-nframes = size(mov,3);
+mov = double(mov(:,:,nremove+1:end));%Remove first 10 ms
+[ncol, nrow, nframes] = size(mov);
 RefIm = mean(mov,3);%Avg image
 t = (1:nframes)*dt;%Time vector
 

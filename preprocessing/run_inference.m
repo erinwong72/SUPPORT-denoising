@@ -1,4 +1,4 @@
-function run_inference(username, root_data, model, background)
+function run_inference(username, root_data, model, background, rerun)
 
 % read in username and password from text file
 server_ip = '10.93.5.151'; % fanlab server IP address
@@ -19,9 +19,9 @@ end
 % run inference script on server
 cmd = sprintf([ ...
     'ssh -o StrictHostKeyChecking=no %s@%s ' ...
-    '"bash -lc ''%s %s %s %s %d''"' ], ...
+    '"bash -lc ''%s %s %s %s %d %d''"' ], ...
     username, server_ip, ...
-    inference_script, username, root_data, model, background);
+    inference_script, username, root_data, model, background, rerun);
 
 system(cmd, '-echo');
 end

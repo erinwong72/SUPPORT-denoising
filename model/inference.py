@@ -10,18 +10,19 @@ from support_model import *
 #         height, width = tif.pages[0].shape
 #     return num_frames, height, width
 
-def batch_inference(paths_to_process, model):
+def batch_inference(paths_to_process, model, rerun=False):
     for i, tif_path in enumerate(paths_to_process):
         print(f"Processing file {i+1} of {len(paths_to_process)}")
         # if path is in the wrong format (aka for PC use), fix it
         if tif_path.startswith("Z:"):
-            tif_path = tif_path.replace("Z:", "")
+            tif_path = tif_path.replace("Z:", "/mnt/fanlab")
             tif_path = tif_path.replace("\\", "/")
-        tif_path = tif_path.replace(f'/Volumes', '/mnt')
+        elif tif_path.startswith("/Volumes"):
+            tif_path = tif_path.replace(f'/Volumes', '/mnt')
         try:
             raw_filename = os.path.join(tif_path, "support", "raw.tiff")
             output_filename = os.path.join(tif_path, "support", "denoised.tiff")
-            if os.path.exists(output_filename):
+            if os.path.exists(output_filename) and not rerun:
                 print(f"File already processed, skipping: {tif_path}")
                 continue
             # creating and saving denoised files
@@ -48,14 +49,18 @@ if __name__ == "__main__":
     parser.add_argument('--raw_path', type=str, help='Path to the raw data directory')
     parser.add_argument('--model_path', type=str, help='Path to the model file')
     parser.add_argument('--gpu', type=int, default=0, help='GPU id to use (default: 0)')
+    parser.add_argument('--rerun', type=int, default=0, help='Whether to rerun inference on already processed files (default: 0)')
     args = parser.parse_args()
 
     raw_path = args.raw_path
     model_path = args.model_path
+    rerun = bool(args.rerun)
 
     # load list of paths to process from text file
-    with open(os.path.join(raw_path, 'sessions_for_support.txt'), 'r') as f:
+    raw_path = raw_path.replace("/Volumes", "/mnt")
+    with open(f'{raw_path}/sessions_for_support.txt', 'r') as f:
         paths_to_process = f.read().splitlines()
+        # add compatibility for both linux and windows paths, removing 'Z:
 
     print(f"Found {len(paths_to_process)} files to process.")
 
@@ -77,4 +82,4 @@ if __name__ == "__main__":
     # create output directory if it doesn't exist
 
     # run inference
-    batch_inference(paths_to_process, model)
+    batch_inference(paths_to_process, model, rerun)
