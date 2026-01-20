@@ -1,4 +1,6 @@
 import os, sys, glob, argparse, skimage.io as skio, tifffile, torch
+from typing import List
+from pathlib import Path
 from support_model import *
 # # get working directory
 # pwd = os.path.dirname(os.path.abspath(__name__))
@@ -12,14 +14,15 @@ from support_model import *
 
 def batch_inference(raw_data_path, model):
     # raw_data_path is a directory containing .tiff files to process
-    paths_to_process = glob.glob(raw_data_path + '/*.tiff', recursive=False)
+    paths_to_process = list(Path(raw_data_path).glob('*.tif'))
     print(f"Found {len(paths_to_process)} files to process.")
 
     for i, tif_path in enumerate(paths_to_process):
-        output_filename = tif_path.replace('.tiff', '_denoised.tiff')
+        tif_path = str(tif_path)
+        output_filename = tif_path.replace('.tif', '_denoised.tif')
         if os.path.exists(output_filename):
             print(f"File already processed, skipping: {tif_path}")
-            paths_to_process.remove(tif_path)
+            paths_to_process.pop(i)
             continue
         try:
             print(f"Processing file: {tif_path}")
