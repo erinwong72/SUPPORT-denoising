@@ -8,6 +8,7 @@ USER=$1
 DATA_DIR=$2
 MODEL=$3
 BACKGROUND=$4 # run in the background if 1, else run in foreground
+RERUN=$5
 
 # get paths and everything passed in from matlab script
 ROOT=/home/$USER/
@@ -40,7 +41,6 @@ fi
 cd $ROOT/SUPPORT-denoising/model/
 
 export DATA_DIR #="/mnt/fanlab/Labmembers/Kohl/CCK/cck-inhDSI-w08/2026-01-13-VR-V_blue/" # where output from support is saved
-
 LOG_DIR="$ROOT/SUPPORT-denoising/results/logs/inference/"
 if [ ! -d "$LOG_DIR" ]; then
     mkdir -p "$LOG_DIR"
@@ -53,10 +53,10 @@ export GPU_ID=0
 
 if [ "$BACKGROUND" -eq 0 ]; then
     echo "Running inference in foreground..."
-    python -u -m inference --raw_path "$DATA_DIR" --model_path "$MODEL_PATH" --gpu "$GPU_ID" 2>&1 | tee "$LOG"
+    python -u -m inference --raw_path "$DATA_DIR" --model_path "$MODEL_PATH" --gpu "$GPU_ID" --rerun "$RERUN" 2>&1 | tee "$LOG"
 else
     echo "Running inference in background..."
-    nohup bash -c 'set -e; python -m inference --raw_path "$DATA_DIR" --model_path "$MODEL_PATH" --gpu "$GPU_ID"' \
+    nohup bash -c 'set -e; python -m inference --raw_path "$DATA_DIR" --model_path "$MODEL_PATH" --gpu "$GPU_ID" --rerun "$RERUN"' \
     2>&1 | tee "$LOG" &
     echo "Inference started in background. Check $LOG for progress."
 fi
