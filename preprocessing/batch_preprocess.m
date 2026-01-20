@@ -47,7 +47,7 @@ exclude = {};
 
 %% set which steps for preprocessing to run
 prepro = [0 0 1 1 0 0]; % 1 if running the step, 0 if not
-rerun = [0 0 1 1 0 0];
+rerun = [0 0 0 0 0 0];
 % 1: Motion Correction
 % 2: SUPPORT (generate data for model to run)
 % 3: SUPPORT inference (apply trained model on data)
