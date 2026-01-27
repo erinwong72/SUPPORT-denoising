@@ -10,7 +10,7 @@ from support_model import *
 #         height, width = tif.pages[0].shape
 #     return num_frames, height, width
 
-def batch_inference(paths_to_process, model, rerun=False):
+def batch_inference(paths_to_process, model, rerun=False, support_dirname="support"):
     for i, tif_path in enumerate(paths_to_process):
         print(f"Processing file {i+1} of {len(paths_to_process)}")
         # if path is in the wrong format (aka for PC use), fix it
@@ -20,8 +20,8 @@ def batch_inference(paths_to_process, model, rerun=False):
         elif tif_path.startswith("/Volumes"):
             tif_path = tif_path.replace(f'/Volumes', '/mnt')
         try:
-            raw_filename = os.path.join(tif_path, "support", "raw.tiff")
-            output_filename = os.path.join(tif_path, "support", "denoised.tiff")
+            raw_filename = os.path.join(tif_path, support_dirname, "raw.tiff")
+            output_filename = os.path.join(tif_path, support_dirname, "denoised.tiff")
             if os.path.exists(output_filename) and not rerun:
                 print(f"File already processed, skipping: {tif_path}")
                 continue
@@ -50,16 +50,20 @@ if __name__ == "__main__":
     parser.add_argument('--model_path', type=str, help='Path to the model file')
     parser.add_argument('--gpu', type=int, default=0, help='GPU id to use (default: 0)')
     parser.add_argument('--rerun', type=int, default=0, help='Whether to rerun inference on already processed files (default: 0)')
+    parser.add_argument('--support_dirname', type=str, help='Name of the support directory')
     args = parser.parse_args()
 
     raw_path = args.raw_path
     model_path = args.model_path
     rerun = bool(args.rerun)
+    support_dirname = args.support_dirname
 
     # load list of paths to process from text file
     raw_path = raw_path.replace("/Volumes", "/mnt")
     with open(f'{raw_path}/sessions_for_support.txt', 'r') as f:
         paths_to_process = f.read().splitlines()
+        # replace any instances of 'fanlab-1' with 'fanlab'
+        paths_to_process = [p.replace('fanlab-1', 'fanlab') for p in paths_to_process]
         # add compatibility for both linux and windows paths, removing 'Z:
 
     print(f"Found {len(paths_to_process)} files to process.")
@@ -82,4 +86,4 @@ if __name__ == "__main__":
     # create output directory if it doesn't exist
 
     # run inference
-    batch_inference(paths_to_process, model, rerun)
+    batch_inference(paths_to_process, model, rerun, support_dirname)

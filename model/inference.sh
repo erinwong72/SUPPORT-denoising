@@ -7,8 +7,9 @@ source ~/miniconda3/etc/profile.d/conda.sh
 USER=$1
 DATA_DIR=$2
 MODEL=$3
-BACKGROUND=$4 # run in the background if 1, else run in foreground
-RERUN=$5
+SUPPORT_DIRNAME=$4
+BACKGROUND=$5 # run in the background if 1, else run in foreground
+RERUN=$6
 
 # get paths and everything passed in from matlab script
 ROOT=/home/$USER/
@@ -39,7 +40,11 @@ else
 fi
 
 cd $ROOT/SUPPORT-denoising/model/
-
+# if fanlab-1 is in DATA_DIR, replace with fanlab
+if [[ "$DATA_DIR" == *"fanlab-1"* ]]; then
+    DATA_DIR="${DATA_DIR/fanlab-1/fanlab}"
+    echo "Replaced fanlab-1 with fanlab in DATA_DIR"
+fi
 export DATA_DIR #="/mnt/fanlab/Labmembers/Kohl/CCK/cck-inhDSI-w08/2026-01-13-VR-V_blue/" # where output from support is saved
 LOG_DIR="$ROOT/SUPPORT-denoising/results/logs/inference/"
 if [ ! -d "$LOG_DIR" ]; then
@@ -50,13 +55,16 @@ LOG="$LOG_DIR/inference_$(date +%Y%m%d_%H%M%S).log"
 export LOG
 export MODEL_PATH
 export GPU_ID=0
+export SUPPORT_DIRNAME
+export RERUN
 
+echo SUPPORT_DIRNAME: $SUPPORT_DIRNAME
 if [ "$BACKGROUND" -eq 0 ]; then
     echo "Running inference in foreground..."
-    python -u -m inference --raw_path "$DATA_DIR" --model_path "$MODEL_PATH" --gpu "$GPU_ID" --rerun "$RERUN" 2>&1 | tee "$LOG"
+    python -u -m inference --raw_path "$DATA_DIR" --model_path "$MODEL_PATH" --gpu "$GPU_ID" --support_dirname "$SUPPORT_DIRNAME" --rerun "$RERUN"  2>&1 | tee "$LOG"
 else
     echo "Running inference in background..."
-    nohup bash -c 'set -e; python -m inference --raw_path "$DATA_DIR" --model_path "$MODEL_PATH" --gpu "$GPU_ID" --rerun "$RERUN"' \
+    nohup bash -c 'set -e; python -m inference --raw_path "$DATA_DIR" --model_path "$MODEL_PATH" --gpu "$GPU_ID" --rerun "$RERUN" --support_dirname "$SUPPORT_DIRNAME"' \
     2>&1 | tee "$LOG" &
     echo "Inference started in background. Check $LOG for progress."
 fi
