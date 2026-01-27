@@ -1,7 +1,7 @@
 % This is the manual input portion of Run_PCA_ICA_RMmov_FanLab_function
 % Save this as Run_PCA_ICA_RMmov_FanLab_Input.m
 
-function ICA_Choose(session_path, use_support)
+function ICA_Choose(session_path, use_support, support_dirname)
 
 positions = {
     [0.0, 0.5, 0.5, 0.5]; % Top-left
@@ -9,8 +9,11 @@ positions = {
     [0.0, 0.0, 0.5, 0.5]; % Bottom-left
     [0.5, 0.0, 0.5, 0.5]; % Bottom-right
     };
+if isempty(support_dirname)
+    support_dirname = 'support';
+end
 if use_support
-    save_dir = fullfile(session_path, 'support');
+    save_dir = fullfile(session_path, support_dirname);
 else
     save_dir = session_path;
 end
@@ -93,9 +96,15 @@ for i = 1:nCell
             sOrig = sOrig(:);                                 % Tx1
             sOrig = (sOrig-mean(sOrig))/std(sOrig)*60;
 
-            W_downsample = squeeze(mean(mean(reshape(W,2,12,2,12),1),3));
-            W_ds_flat = reshape(W_downsample, 1, [])';
-
+            % Original size
+            [H, W_] = size(W);
+            % Block size (example)
+            bh = 2;   % rows per block
+            bw = 2;   % cols per block
+            % Check divisibility
+            assert(mod(H,bh)==0 && mod(W_,bw)==0, 'Size not divisible by block size');
+            % Reshape and average
+            W_downsample = squeeze(mean(mean(reshape(W, bh, H/bh, bw, W_/bw),1), 3));            W_ds_flat = reshape(W_downsample, 1, [])';
             %figure(); hold on; plot((1:size(s,1))/1000,s);
 
             % High-pass the template trace - note distinct from ICA_pre implementation

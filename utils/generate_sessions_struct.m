@@ -5,8 +5,8 @@ function sessions = generate_sessions_struct(discovered_sessions, path, sel_FOVs
 %                           fov_num_cells, date, slice, cell_hash
 %   path           - struct with fields:
 %                       path.save_dir
-%                       path.root.data
-%                       path.anim_ids
+%                       path.anim_id
+%                       path.sess_id
 %   sel_FOVs        - vector of FOV indices to include (empty = include all)
 %   sel_slices     - cell array of slice names or vector of slice indices to include (empty = include all)
 %   waveform_stim  - string or cell array of strings used to filter session directories (empty = include all)
@@ -39,14 +39,14 @@ function sessions = generate_sessions_struct(discovered_sessions, path, sel_FOVs
 keep_mask = true(size(discovered_sessions));
 
 % filter by session id (path.sess_ids)
-if nargin >= 2 && isstruct(path) && isfield(path, 'sess_ids') && ~isempty(path.sess_ids)
+if nargin >= 2 && isstruct(path) && isfield(path, 'sess_id') && ~isempty(path.sess_id)
     % get session id from session_path
     session_ids = {discovered_sessions.session_path};
     % extract session id from session_path using strsplit
     session_ids = cellfun(@(x) strsplit(x, filesep), session_ids, 'UniformOutput', false);
     session_ids = cellfun(@(x) x{end-3}, session_ids, 'UniformOutput', false);
     % check if path.sess_ids is in session_ids
-    keep_mask = keep_mask & ismember(session_ids, path.sess_ids);
+    keep_mask = keep_mask & ismember(session_ids, path.sess_id);
 end
 
 % Filter by FOV

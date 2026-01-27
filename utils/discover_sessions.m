@@ -1,4 +1,4 @@
-function sessions = discover_sessions(raw_root, animal_id, save_dir, exclude_session_names)
+function sessions = discover_sessions(raw_root, animal_id, save_dir, exclude_session_names, rediscover)
 % Discover imaging sessions corresponding to the given animal preparation in the raw data directory.
 
 sessions = struct([]);
@@ -8,7 +8,7 @@ if nargin < 4; exclude_session_names = []; end
 
 % see if the sessions for the animal_prep are already in the save_dir, if so, load them and return
 save_name = sprintf('sessions_%s.mat', animal_id);
-if isfile(fullfile(save_dir, save_name)); load(fullfile(save_dir, save_name), 'sessions'); return; end
+if isfile(fullfile(save_dir, save_name)) && ~rediscover; load(fullfile(save_dir, save_name), 'sessions'); return; end
 
 % Handle raw_root as either a string or a containers.Map
 if isa(raw_root, 'containers.Map')

@@ -10,7 +10,7 @@
 % Outputs:
 %   nCell, t, icsTime_all, icsTimeOrig_all, icsSpace_all, CellImgs, MaskMov
 
-function [nCell, t, icsTime_all, icsTimeOrig_all, icsSpace_all, CellImgs, MaskMov] = ICA_Pre(session_path,is_stim, use_ring_bkg, use_support)
+function [nCell, t, icsTime_all, icsTimeOrig_all, icsSpace_all, CellImgs, MaskMov] = ICA_Pre(session_path,is_stim, use_ring_bkg, use_support, support_dirname)
 
 close all; dt = 1;%ms
 % Set default for background subtraction method
@@ -20,7 +20,9 @@ end
 if nargin < 2 || isempty(use_ring_bkg)
     use_ring_bkg = 0;  % Default to standard corner box method for backward compatibility
 end
-
+if isempty(support_dirname)
+    support_dirname = 'support';
+end
 % Get Stimulation protocol - what if there is no stimulation?
 if is_stim
     get_stim_protocol(session_path);
@@ -28,28 +30,33 @@ end
 
 % Load motion-corrected movie
 DaqRate = 10000;
-
+Info = textscan(fopen(fullfile(session_path, 'experimental_parameters.txt')),'%s');
+nrow = str2num(Info{1,1}{6,1}); ncol = str2num(Info{1,1}{3,1});
 if use_support
-    save_dir = fullfile(session_path, 'support');
+    save_dir = fullfile(session_path, support_dirname);
     mov = loadtiff(fullfile(save_dir, "denoised.tiff"));
-    imshow(mov(:,:,10), [])
-    mov_raw = loadtiff(fullfile(save_dir, "raw.tiff"));
-    imshow(mov_raw(:,:,10), [])
-    sprintf("loaded mov file: %s", fullfile(save_dir, "denoised.tiff"))
+    % Info = textscan(fopen(fullfile(session_path, 'experimental_parameters.txt')),'%s');
+    % nrow = str2num(Info{1,1}{6,1}); ncol = str2num(Info{1,1}{3,1});
+    % binPath = fullfile(session_path,'movReg.bin');
+    % [movReg, nframes] = readBinMov(binPath, ncol, nrow);
+    % 
+    % imshow(movReg(:,:,10), [])
+    % figure;
+    % imshow(mov(:,:,10), [])
+    
 else
-    save_dir = session_path;
-    Info = textscan(fopen(fullfile(session_path, 'experimental_parameters.txt')),'%s');
-    nrow = str2num(Info{1,1}{6,1}); ncol = str2num(Info{1,1}{3,1});
+    save_dir = session_path;    
     binPath = fullfile(save_dir,'movReg.bin');
     [mov, nframes] = readBinMov(binPath, ncol, nrow);
 end
 
 nremove = 10/dt;
 mov = double(mov(:,:,nremove+1:end));%Remove first 10 ms
-[ncol, nrow, nframes] = size(mov);
+nframes = size(mov, 3);
 RefIm = mean(mov,3);%Avg image
 t = (1:nframes)*dt;%Time vector
 
+disp(nframes)
 [Fmasks, roimask] = apply_mask_RMmov_BkgSel_FanLab_withpath(mov, session_path);
 saveas(gca,fullfile(save_dir,'MaskTraces_RMmov.fig'));
 

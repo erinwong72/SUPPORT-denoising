@@ -24,9 +24,9 @@ end
 %% generating paths
 addpath(fullfile(root_path,'Computer Code', 'SUPPORT-denoising', 'utils'));
 addpath(fullfile(root_path,'Computer Code', 'SUPPORT-denoising', 'preprocessing'));
-% safe_addpath(fullfile(root_path,'Computer Code','Image Processing'));
-% safe_addpath(fullfile(root_path,'Computer Code','NoRmCorre'));
-% safe_addpath(fullfile(root_path,'Computer Code','Fan Lab'));
+safe_addpath(fullfile(root_path,'Computer Code','Image Processing'));
+safe_addpath(fullfile(root_path,'Computer Code','NoRmCorre'));
+safe_addpath(fullfile(root_path,'Computer Code','Fan Lab', '1extract-voltage-imaging-signal'));
 
 %% setting directories
 % custom_raw_roots = containers.Map( ...
@@ -37,16 +37,23 @@ addpath(fullfile(root_path,'Computer Code', 'SUPPORT-denoising', 'preprocessing'
 
 path.root.data = fullfile(root_path,'Labmembers','Kohl','CCK');
 %path.root.data = fullfile(root_path,'Labmembers','Xingyu', 'CCK-GtACR-BTSP');
+%path.root.data = fullfile(root_path,'Labmembers','Kailong', 'in vivo imaging_IPSP', 'cck-ipsp+btsp');
+
 custom_raw_roots = path.root.data;
-path.anim_ids = {'cck-inhDSI-w08'};
-path.sess_ids = {'2026-01-13-VR-V_blue'};
+path.anim_ids = {'cck-gtacr-w14'};
+
+%path.anim_ids = {'cck-gtacr-btsp-w02'};
+%path.anim_ids = {'cck-ipsp-btsp-w26'};
+%path.sess_ids = {'2026-01-20_dsi_ipsp_test'}; %'2026-01-20_dsi_ipsp_test'
+%path.sess_ids = {'2025-12-23_VR-V-Blue'};
+path.sess_ids = {'01_22_2026-VR_V_Disinhibit'};
+
 sel_FOVs = [];
-sel_slices = [2 3];
-animal_type = 'cck-inhDSI';
+sel_slices = [];
 exclude = {};
 
 %% set which steps for preprocessing to run
-prepro = [0 0 1 1 0 0]; % 1 if running the step, 0 if not
+prepro = [0 1 1 1 0 0]; % 1 if running the step, 0 if not
 rerun = [0 0 0 0 0 0];
 % 1: Motion Correction
 % 2: SUPPORT (generate data for model to run)
@@ -56,6 +63,15 @@ rerun = [0 0 0 0 0 0];
 % 6: Spike Thresholding
 %preprocessed = 0; % if haven't already analyzed raw data and is the first time preprocessing
 use_support = 1;
+if use_support
+    % parameters for support
+    username = 'knswift';
+    model = 'cck-gevi';%'cck-gevi'
+    background=0; % stream into matlab command window
+    support_dirname = "support_CCKBC";
+else
+    support_dirname = "none";
+end
 is_stim = 1;
 use_ring_bkg = 0;
 if is_stim; blueStim = 'AO'; else blueStim = ''; end
@@ -72,11 +88,13 @@ sessions_all = convert_struct_paths(total_sessions, root_path);
 sel_sessions = generate_sessions_struct(sessions_all, path, sel_FOVs, sel_slices);
 
 % save session paths to json file for python to use (as a list)
-session_paths = {sel_sessions.session_path};
-session_paths_list = sprintf('%s\n', session_paths{:});
-fid = fopen(fullfile(path.root.data, path.anim_ids{1}, path.sess_ids{1}, 'sessions_for_support.txt'), 'w');
-fwrite(fid, session_paths_list, 'char');
-fclose(fid);
+if use_support
+    session_paths = {sel_sessions.session_path};
+    session_paths_list = sprintf('%s\n', session_paths{:});
+    fid = fopen(fullfile(path.root.data, path.anim_ids{1}, path.sess_ids{1}, 'sessions_for_support.txt'), 'w');
+    fwrite(fid, session_paths_list, 'char');
+    fclose(fid);
+end
 
 %% Preprocessing pipeline on sessions
 % target_file = "denoised.tiff";
@@ -95,7 +113,8 @@ fclose(fid);
 for s = 1:numel(sel_sessions)
     session_path = sel_sessions(s).session_path;
     fprintf('Processing session: %s\n', session_path);
-    if use_support; save_dir = fullfile(session_path, 'support'); else; save_dir = session_path; end % Set subdir_path for processing
+    if use_support; save_dir = fullfile(session_path, support_dirname); 
+    else; save_dir = session_path; end % Set subdir_path for processing
 
     %% Motion Correction
     motion_corr_output = 'movReg.bin';
@@ -123,20 +142,18 @@ for s = 1:numel(sel_sessions)
 
     %% generate tiff files for support
     if prepro(2)
-        raw_tiff = fullfile(session_path, 'support', 'raw.tiff');
-        denoised_tiff = fullfile(session_path, 'support', 'denoised.tiff');
+        raw_tiff = fullfile(save_dir, 'raw.tiff');
+        denoised_tiff = fullfile(save_dir, 'denoised.tiff');
         if ~isfile(raw_tiff) && ~isfile(denoised_tiff) || rerun(2)
-            if ~prepro(1)
-                Info = textscan(fopen(fullfile(session_path,'experimental_parameters.txt')),'%s');
-                nrow = str2num(Info{1,1}{6,1}); ncol = str2num(Info{1,1}{3,1});
-                binName = fullfile(session_path,'movReg.bin');
-                [movReg, nframes] = readBinMov(binName, ncol, nrow);
-                disp("read different bin mov")
-            end
+            Info = textscan(fopen(fullfile(session_path,'experimental_parameters.txt')),'%s');
+            nrow = str2num(Info{1,1}{6,1}); ncol = str2num(Info{1,1}{3,1});
+            binName = fullfile(session_path,'movReg.bin');
+            [movReg, nframes] = readBinMov(binName, ncol, nrow);
+            disp("read different bin mov")
             movReg = double(movReg);
             options.big = true;
             options.overwrite=true;
-            saveastiff(movReg, raw_tiff, options);
+            saveastiff(movReg, char(raw_tiff), options);
         end
     end
 end
@@ -145,10 +162,8 @@ end
 
 % KEEP GOING! YOU'RE DOING GREAT :D
 % make sure you have SSH key set up for compute server, refer to README for instructions
+
 if prepro(3)
-    username = 'knswift';
-    model = 'cck-gevi';
-    background=0; % stream into matlab command window
 
     for a = 1:numel(path.anim_ids)
         for s = 1:numel(path.sess_ids)
@@ -159,7 +174,7 @@ if prepro(3)
                 data_path = replace(data_path, '\', '/');
                 disp(data_path)
             end
-            run_inference(username, data_path, model, background, rerun(3));
+            run_inference(username, fullfile(data_path), model, support_dirname, background, rerun(3));
         end
     end
 end
@@ -169,17 +184,17 @@ disp('Moving on to ICA');
 for s = 1:numel(sel_sessions)
     session_path = sel_sessions(s).session_path;
     fprintf('Processing session: %s\n', session_path);
-    if use_support; save_dir = fullfile(session_path, 'support'); else; save_dir = session_path; end % Set subdir_path for processing
+    %if use_support; save_dir = fullfile(session_path, 'support'); else; save_dir = session_path; end % Set subdir_path for processing
     %% ICA
     if any(prepro(4:5))
-        if use_support && ~isfile(fullfile(session_path, 'support', 'denoised.tiff'))
+        if use_support && ~isfile(fullfile(save_dir, 'denoised.tiff'))
             continue;
         else
             try
                 %ICA Pre
                 if prepro(4) && ~isfile(fullfile(save_dir,'ICA_PreResults.mat')) || rerun(4)
                     disp("Running ICA_Pre")
-                    ICA_Pre(session_path,is_stim, use_ring_bkg, use_support);
+                    ICA_Pre(session_path,is_stim, use_ring_bkg, use_support, support_dirname);
                 end
         
                 %ICA Choose
@@ -187,7 +202,7 @@ for s = 1:numel(sel_sessions)
                 if prepro(5) && isfile(fullfile(save_dir,'ICA_PreResults.mat')) && ~isfile(fullfile(save_dir,'Fig_intens_ICA.fig')) || rerun(5)
                     disp("Running ICA_Choose")
                     disp(session_path);
-                    ICA_Choose(session_path, use_support);
+                    ICA_Choose(session_path, use_support, support_dirname);
                 end
                 fprintf('Success: %s\n', session_path);
             catch ME
