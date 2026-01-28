@@ -1,4 +1,6 @@
-%% IMPORTANT!!! Change variables/file paths at line 62 BEFORE RUNNING!
+%% IMPORTANT!!! Change variables/file paths at line 71 and 92 BEFORE RUNNING!
+
+sort = 0; % change this to 1 if need to sort denoised files
 
 %% Add these to path
 
@@ -21,6 +23,7 @@ addpath(fullfile(root_path,'Computer Code', 'Image Processing','FastICA_25'));
 % Can comment out if not needed, but it will not do anything if files are
 % already sorted.
 
+if sort==1
 % Get names of all files
 parent = '/Volumes/fanlab/Labmembers/Niveda/Testing_SPON'; % aka save_mov_path from SUPPORT_dataset_gen
 cd(parent)
@@ -63,8 +66,9 @@ for i = 1:length(dir_files)
         disp(strcat("File previously sorted: ",tmp_file))
     end
 end
+end
 
-%% IMPORTANT!!! Change variables here!!!
+%% IMPORTANT!!! Change variables here if needed!!! Edit file paths in next section
 
 parent = '/Volumes/fanlab/Labmembers/Niveda/Testing_SPON'; % aka save_mov_path from SUPPORT_dataset_gen
 cd(parent)
@@ -85,68 +89,89 @@ if isempty(dir_folders)
     end
 end
 
-%%
+%% Double check file paths here before running!!
+
 % session_path = where the raw data is stored (.bin file, AI Data, experimental_parameters.txt files, etc)
 % denoised_path = where the denoised .tif file is stored
 % save_path = where the newly computed ICA/PCA of the denoised data should be saved 
 
 % If SUPPORT_data_gen was run, all session paths are stored in
-% folder2extract, and all files that were processed are stored in savedfiles
+% folder2extract, and a1ll files that were processed are stored in savedfiles
 
 cd(parent) % directory where all denoised data is stored (even after sorting)
+load('dataset_paths.mat');
+cont_outer = 0;
+
+colors = [0, 0, 0;            % Raw - black
+          0.0, 0.45, 0.74;];  % 50 - blue
+type = {'raw', 'SUPPORT'}; 
+end_idx = 2;
 
 % loop through each of the folders containing denoised data and run ICA/PCA
-for i = 4:9 %length(dir_folders)
-    denoised_path = dir_folders(i);
-        title_parts = strsplit(denoised_path, '_');
-        animalID = title_parts(1);
-        FOV = title_parts(2);
-        session_title = strcat(title_parts(3),'_', title_parts(4));
-        total_cells = double(title_parts(5));
+for sess_i = 18%11:length(dir_folders)
+    denoised_path = dir_folders(sess_i);
+        animalID = extractBefore(denoised_path,'_FOV');
+        title_parts = strsplit(extractAfter(denoised_path,strcat(animalID,'_')), '_');
+        FOV = title_parts(1);
+        session_title = strcat(title_parts(2),'_', title_parts(3));
+        total_cells = double(title_parts(4));
     session_path_full = savedfiles(logical(contains(savedfiles,animalID).*contains(savedfiles,FOV).*contains(savedfiles,session_title)));
     session_path = extractBefore(session_path_full, '/movReg.bin');
     save_path = denoised_path;
 
+    % Storing names in a new variable called sessions, which will be called many times
+    sessions(sess_i).raw_path = session_path;
+    sessions(sess_i).denoised_path = denoised_path;
+    sessions(sess_i).animalID = animalID;
+    sessions(sess_i).FOV = FOV;
+    sessions(sess_i).session_title = session_title;
+    sessions(sess_i).nCell = total_cells;
+% end
+% 
+% 
+% for sess_i = 2%:length(sessions)
+    if ~exist(fullfile(sessions(sess_i).raw_path,'inter_spikeT_spikeW.mat'))
+        disp("spikes not calculated for initial dataset; continuing to next file.")
+        continue
+    else
+        load(fullfile(sessions(sess_i).raw_path,'inter_spikeT_spikeW.mat'),'C');
+         for c = 1:length(C)
+             sessions(sess_i).nspike(1,c) = C(c).nspike;
+         end
+             spikes_tf = sum(sessions(sess_i).nspike);
+             if spikes_tf==0
+                 disp("no spikes detected; continuing to next file.")
+                 continue
+             else
+                 sessions(sess_i).raw_spikes{c} = C(c).spikeT{1,1};
+             end
+    end
+
     % First run ICA/PCA and spike identification on denoised data
     [nCell, t, icsTime_all, icsTimeOrig_all, icsSpace_all, CellImgs, MaskMov] = ICA_Pre_diffpaths(session_path,denoised_path,save_path,is_stim,use_ring_bkg,use_support);
     ICA_Choose_diffpaths(session_path, denoised_path, save_path, use_support)
-  %  Run_ext_spike_HipCA1VR_AIBluecrt_FanLab_functionV6_diffpaths(blueStim, session_path, denoised_path, save_path, use_support)
-
-    % Storing names in a new variable called sessions, which will be called many times
-    sessions(i).raw_path = session_path;
-    sessions(i).denoised_path = denoised_path;
-    sessions(i).animalID = animalID;
-    sessions(i).FOV = FOV;
-    sessions(i).session_title = session_title;
-    sessions(i).nCell = total_cells;
+    % Run_ext_spike_HipCA1VR_AIBluecrt_FanLab_functionV6_diffpaths(blueStim, session_path, denoised_path, save_path, use_support)
 end
 
-%% Calculate background noise
-
-for sess_i = 4:9 %length(sessions)
-    cd(parent)
-    save_path = sessions(sess_i).denoised_path;
-
-    % Store raw trace and spikes
-    load(fullfile(sessions(sess_i).raw_path,'Masks_BestIcaTrace.mat'));
-    load(fullfile(sessions(sess_i).raw_path,'inter_spikeT_spikeW.mat'),'C');
-    sessions(sess_i).trace{1} = IntensOrig;
-    for c = 1:length(C)
-    sessions(sess_i).raw_spikes(:,c) = C(c).spikeT;
-    end
-    clear C IntensOrig
-
-    % Store denoised trace and spikes
-    load(fullfile(sessions(sess_i).denoised_path,'Masks_BestIcaTrace.mat'));
-  %  load(fullfile(sessions(sess_i).denoised_path,'inter_spikeT_spikeW.mat'),'C');
-    sessions(sess_i).trace{2} = IntensOrig;
-  %  sessions(sess_i).denoised_spikes = C.spikeT{1,1};
-    clear C IntensOrig
-    
+%%
+for sess_i = 1 %:length(sessions)
     % Calculate noise level in denoised trace
     dt = 1;
     noise_region = zeros(1,sessions(sess_i).nCell);
     clear SNR
+    % nCell = sessions(sess_i).nCell;
+
+    load(fullfile(sessions(sess_i).raw_path,'Masks_BestIcaTrace.mat'));
+    sessions(sess_i).trace{1} = IntensOrig;
+    clear C IntensOrig
+
+    load(fullfile(sessions(sess_i).denoised_path,'Masks_BestIcaTrace.mat'));
+ %  load(fullfile(sessions(sess_i).denoised_path,'inter_spikeT_spikeW.mat'),'C');
+    sessions(sess_i).trace{2} = IntensOrig;
+ %  sessions(sess_i).denoised_spikes = C.spikeT{1,1};
+    clear C IntensOrig
+
+    nCell = sessions(sess_i).nCell;
     for k = 1:nCell
         dFTraces = sessions(sess_i).trace{2};
       %  traces = {dFTraces};
@@ -178,30 +203,24 @@ for sess_i = 4:9 %length(sessions)
                 close(fig);
             end
         %end
+        sessions(sess_i).noise_regions(1,k) = noise_region(k);
     end
-    sessions(sess_i).noise_regions(k) = noise_region(k);
-end
-if ~exist(fullfile(save_path, 'noise_regions'))
-    save(fullfile(save_path, 'noise_regions'), 'sessions');
-end
+    
 
-%% Calculate metrics for each session
+    % save_path = sessions(sess_i).denoised_path;
+    % if ~exist(fullfile(save_path, "metrics"), 'dir')
+    %     mkdir(fullfile(save_path, "metrics"))
+    % end
 
-colors = [0, 0, 0;            % Raw - black
-          0.0, 0.45, 0.74;];  % 50 - blue
-type = {'raw', 'SUPPORT'}; 
-end_idx = 2;
-
-for sess_i = 4:9 %1:length(sessions)
-    save_path = sessions(sess_i).denoised_path;
-    if ~exist(fullfile(save_path, "metrics"), 'dir')
-        mkdir(fullfile(save_path, "metrics"))
-    end
-
+    % Calculate PSNR
     for n = 1:sessions(sess_i).nCell
      %   fig = figure('Position', [100, 100, 1400, 900], 'Color', 'w');
-        spike_idx = sessions(sess_i).raw_spikes{n}; 
-        if ~isempty(spike_idx)
+        if ~isempty(sessions(sess_i).raw_spikes)
+            spike_idx = sessions(sess_i).raw_spikes{1,n}; 
+        else; 
+            continue
+        end
+        if ~isempty(spike_idx) && ~iscell(spike_idx)
             snippet_len = 500;
             waveforms = cell(end_idx, 1);
             noise_regions = sessions(sess_i).noise_regions;
@@ -254,11 +273,32 @@ for sess_i = 4:9 %1:length(sessions)
         end
     end
 
-    % start plotting here
 end
+
+%% Plot scaled traces
+
+figure
+for i = 1:length(sessions(sess_i).scaled_traces)
+    if i==1; color = 'k'; elseif i==2 color = 'b'; end
+    st = sessions(sess_i).scaled_traces{i};
+    for j = 1:size(st,2)
+        trace = st(:,j);
+        subplot(size(st,2),length(sessions(sess_i).scaled_traces),(2*j)-(2-i))
+        plot(trace, color, 'LineWidth', 0.7, 'DisplayName', type{f});
+    end
+end
+sessions(sess_i).psnr
+
+
+%% Save 'sessions' as a .mat file
+if ~exist(fullfile(save_path, 'noise_regions'))
+    save(fullfile(save_path, 'noise_regions'), 'sessions');
+end
+
 save(fullfile(save_path,'sessions_var'), 'sessions');
 
-%% Plotting
+
+%% Plot large graphs
 
 for sess_i = 6%1:length(sessions)
     i = 1; % pick a cell out of nCells

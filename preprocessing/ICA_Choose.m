@@ -9,7 +9,7 @@ positions = {
     [0.0, 0.0, 0.5, 0.5]; % Bottom-left
     [0.5, 0.0, 0.5, 0.5]; % Bottom-right
     };
-if isempty(support_dirname)
+if nargin <3
     support_dirname = 'support';
 end
 if use_support

@@ -22,8 +22,8 @@ end
 %motion_corr = 'post-motion'; % 0 if pre-motion correction, 1 if post
 
 %% generating paths
-addpath(fullfile(root_path,'Computer Code', 'SUPPORT-denoising', 'utils'));
-addpath(fullfile(root_path,'Computer Code', 'SUPPORT-denoising', 'preprocessing'));
+safe_addpath(fullfile(root_path,'Computer Code', 'SUPPORT-denoising', 'utils'),1);
+safe_addpath(fullfile(root_path,'Computer Code', 'SUPPORT-denoising', 'preprocessing'),1);
 safe_addpath(fullfile(root_path,'Computer Code','Image Processing'));
 safe_addpath(fullfile(root_path,'Computer Code','NoRmCorre'));
 safe_addpath(fullfile(root_path,'Computer Code','Fan Lab', '1extract-voltage-imaging-signal'));
@@ -53,7 +53,7 @@ sel_slices = [];
 exclude = {};
 
 %% set which steps for preprocessing to run
-prepro = [0 1 1 1 0 0]; % 1 if running the step, 0 if not
+prepro = [1 0 0 1 1 1]; % 1 if running the step, 0 if not
 rerun = [0 0 0 0 0 0];
 % 1: Motion Correction
 % 2: SUPPORT (generate data for model to run)
@@ -80,7 +80,7 @@ if is_stim; blueStim = 'AO'; else blueStim = ''; end
 total_sessions = struct([]);
 % will automatically look to see if a sessions file already exists
 for a = 1:numel(path.anim_ids)
-    new_sessions = discover_sessions(custom_raw_roots, path.anim_ids{a}, path.root.data, exclude);
+    new_sessions = discover_sessions(custom_raw_roots, path.anim_ids{a}, path.root.data, exclude,1);
     total_sessions = [total_sessions, new_sessions];
 end
 % Convert paths in sessions struct to match current OS (but don't save)

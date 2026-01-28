@@ -55,7 +55,7 @@ end
 % Save sessions as a unit/building block session
 if ~isempty(save_dir) && nargin > 1 && ~isempty(animal_id)
     save_name = sprintf('sessions_%s.mat', animal_id);
-    save(fullfile(save_dir, save_name), "sessions");
+    save(fullfile(save_dir, animal_id, save_name), "sessions");
 end
 end
 

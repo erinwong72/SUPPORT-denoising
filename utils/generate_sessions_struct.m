@@ -1,4 +1,4 @@
-function sessions = generate_sessions_struct(discovered_sessions, path, sel_FOVs, sel_slices, save_flag)
+function sessions = generate_sessions_struct(discovered_sessions, path, sel_slices,sel_FOVs, sel_recs, save_flag)
 % Inputs:
 %   discovered_sessions - struct array from discover_sessions.m with fields:
 %                           anim_id, session_path, session_name, FOV, cell_id,
@@ -49,14 +49,9 @@ if nargin >= 2 && isstruct(path) && isfield(path, 'sess_id') && ~isempty(path.se
     keep_mask = keep_mask & ismember(session_ids, path.sess_id);
 end
 
-% Filter by FOV
-if nargin >= 3 && ~isempty(sel_FOVs)
-    fov_values = [discovered_sessions.FOV];
-    keep_mask = keep_mask & ismember(fov_values, sel_FOVs);
-end
 
 % Filter by slice
-if nargin >= 4 && ~isempty(sel_slices)
+if nargin >= 3 && ~isempty(sel_slices)
     % Handle both cell array of strings and numeric array
     % create new field 'slice' in discovered_sessions from path in discovered_sessions
     for i = 1:numel(discovered_sessions)
@@ -85,6 +80,11 @@ if nargin >= 4 && ~isempty(sel_slices)
     end
 end
 
+% Filter by FOV
+if nargin >= 4 && ~isempty(sel_FOVs)
+    fov_values = [discovered_sessions.FOV];
+    keep_mask = keep_mask & ismember(fov_values, sel_FOVs);
+end
 % Filter by waveform_stim (session name must contain at least one of the strings)
 % if nargin >= 5 && ~isempty(waveform_stim)
 %     session_names = {discovered_sessions.session_name};
@@ -99,6 +99,11 @@ end
 %     end
 % end
 
+if nargin >= 5 && ~isempty(sel_recs)
+    % Handle recording selection
+    rec_names = {discovered_sessions.session_name}; % Assuming 'recording' is a field in discovered_sessions
+    keep_mask = keep_mask & ismember(rec_names, sel_recs);
+end
 % Apply filter
 sessions = discovered_sessions(keep_mask);
 
