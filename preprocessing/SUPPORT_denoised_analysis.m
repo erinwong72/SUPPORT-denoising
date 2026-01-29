@@ -108,7 +108,7 @@ type = {'raw', 'SUPPORT'};
 end_idx = 2;
 
 % loop through each of the folders containing denoised data and run ICA/PCA
-for sess_i = 18%11:length(dir_folders)
+for sess_i = 1:length(dir_folders)
     denoised_path = dir_folders(sess_i);
         animalID = extractBefore(denoised_path,'_FOV');
         title_parts = strsplit(extractAfter(denoised_path,strcat(animalID,'_')), '_');
@@ -143,18 +143,24 @@ for sess_i = 18%11:length(dir_folders)
                  disp("no spikes detected; continuing to next file.")
                  continue
              else
-                 sessions(sess_i).raw_spikes{c} = C(c).spikeT{1,1};
+                 for c = 1:length(C)
+                     sessions(sess_i).raw_spikes{c} = C(c).spikeT{1,1};
+                 end
              end
     end
 
-    % First run ICA/PCA and spike identification on denoised data
-    [nCell, t, icsTime_all, icsTimeOrig_all, icsSpace_all, CellImgs, MaskMov] = ICA_Pre_diffpaths(session_path,denoised_path,save_path,is_stim,use_ring_bkg,use_support);
-    ICA_Choose_diffpaths(session_path, denoised_path, save_path, use_support)
-    % Run_ext_spike_HipCA1VR_AIBluecrt_FanLab_functionV6_diffpaths(blueStim, session_path, denoised_path, save_path, use_support)
+    % % First run ICA/PCA and spike identification on denoised data
+    % [nCell, t, icsTime_all, icsTimeOrig_all, icsSpace_all, CellImgs, MaskMov] = ICA_Pre_diffpaths(session_path,denoised_path,save_path,is_stim,use_ring_bkg,use_support);
+    % ICA_Choose_diffpaths(session_path, denoised_path, save_path, use_support)
+    % % Run_ext_spike_HipCA1VR_AIBluecrt_FanLab_functionV6_diffpaths(blueStim, session_path, denoised_path, save_path, use_support)
 end
 
 %%
-for sess_i = 1 %:length(sessions)
+for sess_i = 1:10
+    if isempty(sessions(sess_i).raw_spikes)
+        disp('no spikes. continuing to next file...')
+        continue
+    end
     % Calculate noise level in denoised trace
     dt = 1;
     noise_region = zeros(1,sessions(sess_i).nCell);
@@ -164,7 +170,9 @@ for sess_i = 1 %:length(sessions)
     load(fullfile(sessions(sess_i).raw_path,'Masks_BestIcaTrace.mat'));
     sessions(sess_i).trace{1} = IntensOrig;
     clear C IntensOrig
-
+    if ~exist(fullfile(sessions(sess_i).denoised_path,'Masks_BestIcaTrace.mat'))
+        continue
+    end
     load(fullfile(sessions(sess_i).denoised_path,'Masks_BestIcaTrace.mat'));
  %  load(fullfile(sessions(sess_i).denoised_path,'inter_spikeT_spikeW.mat'),'C');
     sessions(sess_i).trace{2} = IntensOrig;
@@ -206,12 +214,6 @@ for sess_i = 1 %:length(sessions)
         sessions(sess_i).noise_regions(1,k) = noise_region(k);
     end
     
-
-    % save_path = sessions(sess_i).denoised_path;
-    % if ~exist(fullfile(save_path, "metrics"), 'dir')
-    %     mkdir(fullfile(save_path, "metrics"))
-    % end
-
     % Calculate PSNR
     for n = 1:sessions(sess_i).nCell
      %   fig = figure('Position', [100, 100, 1400, 900], 'Color', 'w');
@@ -244,10 +246,16 @@ for sess_i = 1 %:length(sessions)
                 maxPos = max(trace);
                 scaled = trace/maxPos;
                 sessions(sess_i).scaled_traces{f}(:,n) = scaled;
+
+                sessions(sess_i).psnr{n} = psnrs(n, f);
+                
+                % sessions(sess_i).psnr{f}(:,n) = psnrs(n, f);
             end
-            sessions(sess_i).spike_height{n} = spike_heights(n, f);
-            sessions(sess_i).waveforms{n} = waveforms{f};
-            sessions(sess_i).psnr{n} = psnrs(n, f);
+
+            sessions(sess_i).spike_height = spike_heights; %(n, :);
+              sessions(sess_i).waveforms = waveforms;
+            sessions(sess_i).psnr = psnrs; %(n, :);
+            
         else
             % can scale trace, but not much else if there are no spikes in original trace
             for f = 1:end_idx
@@ -266,10 +274,12 @@ for sess_i = 1 %:length(sessions)
                 maxPos = max(trace);
                 scaled = trace/maxPos;
                 sessions(sess_i).scaled_traces{f}(:,n) = scaled;
+
+                sessions(sess_i).spike_height{n} = [];
+                sessions(sess_i).waveforms{n} = [];
+                sessions(sess_i).psnr{n} = [];
             end
-            sessions(sess_i).spike_height{n} = NaN;
-            sessions(sess_i).waveforms{n} = NaN;
-            sessions(sess_i).psnr{n} = NaN;
+            
         end
     end
 

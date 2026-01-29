@@ -1,14 +1,18 @@
 %% IMPORTANT!!! Change variables/file paths at line 62 BEFORE RUNNING!
 
-clear
+%clear
 close all
 clc
 
 sort = 0; % change this to 1 if need to sort denoised files
 ICA_PCA = 0; % change to 1 if you want to run ICA/PCA (instead of just calculating metrics)
-metrics = 1; % change to 1 if you want to run metrics
+metrics = 0; % change to 1 if you want to run metrics
 end_idx = 2; % keep at 2 if just comparing pre/post SUPPORT
-big_plot = 0; % plot all metrics in one graph (haven't verified that this works, but the option is there)
+big_plot = 1; % plot all metrics in one graph (haven't verified that this works, but the option is there)
+psnr_compare = 0; % plot a comparison of psnr values before and after SUPPORT
+
+type = {'raw', 'SUPPORT'};  % keep this if plotting big plot
+
 
 %% Add these to path
 
@@ -111,7 +115,7 @@ load('dataset_paths.mat');
 cont_outer = 0;
 
 % loop through each of the folders containing denoised data and run ICA/PCA
-for i = 1:length(dir_folders)
+for i = 1:length(dir_folders)-1
     denoised_path = dir_folders(i);
         title_parts = strsplit(denoised_path, '_');
         animalID = title_parts(1);
@@ -161,10 +165,6 @@ for sess_i = 1:length(sessions)
         continue
     end
 
-    % load(fullfile(sessions(sess_i).raw_path,'Masks_BestIcaTrace.mat'));
-    % sessions(sess_i).trace{1} = IntensOrig;
-    % clear C IntensOrig
-
     % First run ICA/PCA and spike identification on denoised data
     [nCell, t, icsTime_all, icsTimeOrig_all, icsSpace_all, CellImgs, MaskMov] = ICA_Pre_diffpaths(session_path,denoised_path,save_path,is_stim,use_ring_bkg,use_support);
     ICA_Choose_diffpaths(session_path, denoised_path, save_path, use_support)
@@ -175,7 +175,7 @@ end
 %% Calculate metrics
 
 if metrics
-for sess_i = 16:length(sessions)
+for sess_i = 1:length(sessions)
 
     % extract information from traces that have spikes
     if ~exist(fullfile(sessions(sess_i).raw_path,'inter_spikeT_spikeW.mat'))
@@ -216,8 +216,6 @@ for sess_i = 16:length(sessions)
     nCell = sessions(sess_i).nCell; % total number of cells
     for k = 1:nCell % which cell's trace we're looking at
         dFTraces = sessions(sess_i).trace{2};
-      %  traces = {dFTraces};
-       % for t = 1:size(dFTraces,2)
         trace = dFTraces(:,k);
             while true
                 fig = figure('Position', [100 100 1500 600]);plot(trace,'r');
@@ -234,8 +232,6 @@ for sess_i = 16:length(sessions)
                 w = waitforbuttonpress;
                 key = get(fig, 'CurrentCharacter');
                 if lower(key) ~= 'r'
-                    %if t == 1; denoised_noise_region(i) = period1;
-                    %else; raw_noise_region(i) = period1; end
                     noise_region(k) = period1;
                     saveas(fig, fullfile(save_path, sprintf('NoiseRegion_%d_%d.png', nCell, k)));
                     savefig(fig, fullfile(save_path, sprintf('NoiseRegion_%d_%d.fig', nCell, k)));
@@ -244,17 +240,10 @@ for sess_i = 16:length(sessions)
                 end
                 close(fig);
             end
-        %end
     end
     sessions(sess_i).noise_regions = noise_region; % save noise regions to the sessions structure
 
-    % save_path = sessions(sess_i).denoised_path;
-    % if ~exist(fullfile(save_path, "metrics"), 'dir')
-    %     mkdir(fullfile(save_path, "metrics"))
-    % end
-
     for n = 1:sessions(sess_i).nCell
-     %   fig = figure('Position', [100, 100, 1400, 900], 'Color', 'w');
         if ~isempty(sessions(sess_i).raw_spikes)
             spike_idx = sessions(sess_i).raw_spikes{1,n}; 
         else; 
@@ -291,17 +280,6 @@ for sess_i = 16:length(sessions)
         else
             % can scale trace, but not much else if there are no spikes in original trace
             for f = 1:end_idx
-                trace = sessions(sess_i).trace{f}(:,n); 
-                % aligned = zeros(length(valid_spikes), 2*snippet_len + 1);
-                % for s = 1:length(valid_spikes)
-                %     idx = valid_spikes(s);
-                %     aligned(s, :) = trace(idx-snippet_len:idx+snippet_len);
-                % end
-               % mean_waveform = mean(aligned, 1);
-                %waveforms{f} = mean_waveform;
-                %spike_heights(n, f) = max(mean_waveform);
-               % psnrs(n, f) = 20 * log10(spike_heights(n, f) / std(trace(noise_regions(n):(noise_regions(n)+299))));
-        
                 % scaling traces
                 maxPos = max(trace);
                 scaled = trace/maxPos;
@@ -316,252 +294,61 @@ for sess_i = 16:length(sessions)
 end
 end
 
-%%
-if ~exist(fullfile(save_path, 'noise_regions'))
-    save(fullfile(save_path, 'noise_regions'), 'sessions');
+if ~exist(fullfile(parent,'sessions.mat'))
+    save(fullfile(parent, 'sessions.mat'), "sessions")
 end
 
 
+%% Compare Pre/Post SUPPORT PSNRs
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-%% Calculate background noise
-
-colors = [0, 0, 0;            % Raw - black
-          0.0, 0.45, 0.74;];  % 50 - blue
-type = {'raw', 'SUPPORT'}; 
-end_idx = 2;
-
-
-for sess_i = 6;
-    cd(parent)
-    save_path = sessions(sess_i).denoised_path;
-
-    % Store raw trace and spikes
-    load(fullfile(sessions(sess_i).raw_path,'Masks_BestIcaTrace.mat'));
-    if ~exist(fullfile(sessions(sess_i).raw_path,'inter_spikeT_spikeW.mat'))
-        disp("spikes not calculated for initial dataset; continuing to next file")
-        continue
-    else
-        load(fullfile(sessions(sess_i).raw_path,'inter_spikeT_spikeW.mat'),'C');
+if psnr_compare
+    all_pre_psnr = [];
+    all_post_psnr = [];
+    for i = 1:length(sessions)
+            for j = 1:length(sessions(i).psnr)
+                if isempty(j) || sum(isnan(sessions(i).psnr{j})); continue; 
+                else
+                all_pre_psnr = [all_pre_psnr; sessions(i).psnr{j}(1)];
+                all_post_psnr = [all_post_psnr; sessions(i).psnr{j}(2)];
+                end
+            end
     end
+    % make edits if necessary
+    all_post_psnr(16) = [];
+    all_pre_psnr(16) = [];
 
-    sessions(sess_i).trace{1} = IntensOrig;
-    for c = 1:length(C)
-    sessions(sess_i).raw_spikes{c} = C(c).spikeT;
-    end
-    clear C IntensOrig
+    %plot
+    psnr_diff = (all_post_psnr - all_pre_psnr) ./ all_pre_psnr;
 
-    % Store denoised trace and spikes
-    load(fullfile(sessions(sess_i).denoised_path,'Masks_BestIcaTrace.mat'));
-  %  load(fullfile(sessions(sess_i).denoised_path,'inter_spikeT_spikeW.mat'),'C');
-    sessions(sess_i).trace{2} = IntensOrig;
-  %  sessions(sess_i).denoised_spikes = C.spikeT{1,1};
-    clear C IntensOrig
+    figure
+    plot(all_pre_psnr, all_post_psnr, '.', 'MarkerSize',12)
+    xlabel('Raw PSNR')
+    ylabel('PSNR after support')
+    title('Raw PSNR vs. Denoised PSNR')
+    hold on
+    xline = [0:24];
+    yline = xline;
+    plot(xline,yline, '--', Color=[0.5, 0.5, 0.5], LineWidth=2)
+    fit = polyfit(all_pre_psnr, all_post_psnr,1);
+    fit_y = fit(1) .* xline + fit(2);
+    plot(xline, fit_y, LineWidth=2)
+    hold off
+    legend(["", "x = y", "1.2999x + -7.0217"])
+
+    figure
+    plot(all_pre_psnr, psnr_diff, '.', 'MarkerSize',12)
+    xlabel('Raw PSNR')
+    ylabel('Percent PSNR Change')
+    title('Percent PSNR Change after Denoising')
     
-    % Calculate noise level in denoised trace
-    dt = 1;
-    noise_region = zeros(1,sessions(sess_i).nCell);
-    clear SNR
-    nCell = sessions(sess_i).nCell;
-    for k = 1:nCell
-        dFTraces = sessions(sess_i).trace{2};
-      %  traces = {dFTraces};
-       % for t = 1:size(dFTraces,2)
-        trace = dFTraces(:,k);
-            while true
-                fig = figure('Position', [100 100 1500 600]);plot(trace,'r');
-                title('Right-click to select start of baseline noise region')
-                hold on;
-                [x, ~] = ginput(1);
-                period1 = uint16(x);
-                period = [period1:period1+300];
-                plot(period,trace(period),'b');
-                % allow for redo
-                text(double(period1), trace(period1), ...
-                    ' Press any key to accept, or press "r" to redo', ...
-                    'VerticalAlignment','bottom','Color','k');
-                w = waitforbuttonpress;
-                key = get(fig, 'CurrentCharacter');
-                if lower(key) ~= 'r'
-                    %if t == 1; denoised_noise_region(i) = period1;
-                    %else; raw_noise_region(i) = period1; end
-                    noise_region(k) = period1;
-                    saveas(fig, fullfile(save_path, sprintf('NoiseRegion_%d_%d.png', nCell, k)));
-                    savefig(fig, fullfile(save_path, sprintf('NoiseRegion_%d_%d.fig', nCell, k)));
-                    close(fig);
-                    break
-                end
-                close(fig);
-            end
-        %end
-    end
-    sessions(sess_i).noise_regions(k) = noise_region(k);
-
-    save_path = sessions(sess_i).denoised_path;
-    if ~exist(fullfile(save_path, "metrics"), 'dir')
-        mkdir(fullfile(save_path, "metrics"))
-    end
-
-    for n = 1:sessions(sess_i).nCell
-     %   fig = figure('Position', [100, 100, 1400, 900], 'Color', 'w');
-        if ~isempty(sessions(sess_i).raw_spikes)
-            spike_idx = sessions(sess_i).raw_spikes{1,n}; 
-        else; 
-            continue
-        end
-        if ~isempty(spike_idx) && ~iscell(spike_idx)
-            snippet_len = 500;
-            waveforms = cell(end_idx, 1);
-            noise_regions = sessions(sess_i).noise_regions;
-            % Get valid spike indices
-            trace_len = length(sessions(sess_i).trace{1}(:,n));
-            valid_spikes = spike_idx(spike_idx > snippet_len & spike_idx < trace_len - snippet_len);    
-                %traces_all = cell(end_idx, 1);
-            for f = 1:end_idx
-                trace = sessions(sess_i).trace{f}(:,n); 
-                aligned = zeros(length(valid_spikes), 2*snippet_len + 1);
-                for s = 1:length(valid_spikes)
-                    idx = valid_spikes(s);
-                    aligned(s, :) = trace(idx-snippet_len:idx+snippet_len);
-                end
-                mean_waveform = mean(aligned, 1);
-                waveforms{f} = mean_waveform;
-                spike_heights(n, f) = max(mean_waveform);
-                psnrs(n, f) = 20 * log10(spike_heights(n, f) / std(trace(noise_regions(n):(noise_regions(n)+299))));
-        
-                % scaling traces
-                maxPos = max(trace);
-                scaled = trace/maxPos;
-                sessions(sess_i).scaled_traces{f}(:,n) = scaled;
-            end
-            sessions(sess_i).spike_height{n} = spike_heights(n, f);
-            sessions(sess_i).waveforms{n} = waveforms{f};
-            sessions(sess_i).psnr{n} = psnrs(n, f);
-        else
-            % can scale trace, but not much else if there are no spikes in original trace
-            for f = 1:end_idx
-                trace = sessions(sess_i).trace{f}(:,n); 
-                % aligned = zeros(length(valid_spikes), 2*snippet_len + 1);
-                % for s = 1:length(valid_spikes)
-                %     idx = valid_spikes(s);
-                %     aligned(s, :) = trace(idx-snippet_len:idx+snippet_len);
-                % end
-               % mean_waveform = mean(aligned, 1);
-                %waveforms{f} = mean_waveform;
-                %spike_heights(n, f) = max(mean_waveform);
-               % psnrs(n, f) = 20 * log10(spike_heights(n, f) / std(trace(noise_regions(n):(noise_regions(n)+299))));
-        
-                % scaling traces
-                maxPos = max(trace);
-                scaled = trace/maxPos;
-                sessions(sess_i).scaled_traces{f}(:,n) = scaled;
-            end
-            sessions(sess_i).spike_height{n} = NaN;
-            sessions(sess_i).waveforms{n} = NaN;
-            sessions(sess_i).psnr{n} = NaN;
-        end
-    end
-
-end
-if ~exist(fullfile(save_path, 'noise_regions'))
-    save(fullfile(save_path, 'noise_regions'), 'sessions');
 end
 
-%% Calculate metrics for each session
-
-colors = [0, 0, 0;            % Raw - black
-          0.0, 0.45, 0.74;];  % 50 - blue
-type = {'raw', 'SUPPORT'}; 
-end_idx = 2;
-
-for sess_i = 1 %:length(sessions)
-    save_path = sessions(sess_i).denoised_path;
-    if ~exist(fullfile(save_path, "metrics"), 'dir')
-        mkdir(fullfile(save_path, "metrics"))
-    end
-
-    for n = 1:sessions(sess_i).nCell
-     %   fig = figure('Position', [100, 100, 1400, 900], 'Color', 'w');
-        if ~isempty(sessions(sess_i).raw_spikes)
-            spike_idx = sessions(sess_i).raw_spikes{1,n}; 
-        else; 
-            continue
-        end
-        if ~isempty(spike_idx) && ~iscell(spike_idx)
-            snippet_len = 500;
-            waveforms = cell(end_idx, 1);
-            noise_regions = sessions(sess_i).noise_regions;
-            % Get valid spike indices
-            trace_len = length(sessions(sess_i).trace{1}(:,n));
-            valid_spikes = spike_idx(spike_idx > snippet_len & spike_idx < trace_len - snippet_len);    
-                %traces_all = cell(end_idx, 1);
-            for f = 1:end_idx
-                trace = sessions(sess_i).trace{f}(:,n); 
-                aligned = zeros(length(valid_spikes), 2*snippet_len + 1);
-                for s = 1:length(valid_spikes)
-                    idx = valid_spikes(s);
-                    aligned(s, :) = trace(idx-snippet_len:idx+snippet_len);
-                end
-                mean_waveform = mean(aligned, 1);
-                waveforms{f} = mean_waveform;
-                spike_heights(n, f) = max(mean_waveform);
-                psnrs(n, f) = 20 * log10(spike_heights(n, f) / std(trace(noise_regions(n):(noise_regions(n)+299))));
-        
-                % scaling traces
-                maxPos = max(trace);
-                scaled = trace/maxPos;
-                sessions(sess_i).scaled_traces{f}(:,n) = scaled;
-            end
-            sessions(sess_i).spike_height{n} = spike_heights(n, f);
-            sessions(sess_i).waveforms{n} = waveforms{f};
-            sessions(sess_i).psnr{n} = psnrs(n, :); % changed thisx
-        else
-            % can scale trace, but not much else if there are no spikes in original trace
-            for f = 1:end_idx
-                trace = sessions(sess_i).trace{f}(:,n); 
-                % aligned = zeros(length(valid_spikes), 2*snippet_len + 1);
-                % for s = 1:length(valid_spikes)
-                %     idx = valid_spikes(s);
-                %     aligned(s, :) = trace(idx-snippet_len:idx+snippet_len);
-                % end
-               % mean_waveform = mean(aligned, 1);
-                %waveforms{f} = mean_waveform;
-                %spike_heights(n, f) = max(mean_waveform);
-               % psnrs(n, f) = 20 * log10(spike_heights(n, f) / std(trace(noise_regions(n):(noise_regions(n)+299))));
-        
-                % scaling traces
-                maxPos = max(trace);
-                scaled = trace/maxPos;
-                sessions(sess_i).scaled_traces{f}(:,n) = scaled;
-            end
-            sessions(sess_i).spike_height{n} = NaN;
-            sessions(sess_i).waveforms{n} = NaN;
-            sessions(sess_i).psnr{n} = NaN;
-        end
-    end
-
-    % start plotting here
-end
-save(fullfile(save_path,'sessions_var'), 'sessions');
 
 %% Plotting - Big Plot
 
 if big_plot
-for sess_i = 6%1:length(sessions)
+    fig = figure('Position', [100, 100, 1400, 900], 'Color', 'w');
+for sess_i = 6 %1:length(sessions)
     i = 1; % pick a cell out of nCells
 
     % Top-left: traces

@@ -20,7 +20,7 @@ end
 if nargin < 2 || isempty(use_ring_bkg)
     use_ring_bkg = 0;  % Default to standard corner box method for backward compatibility
 end
-if isempty(support_dirname)
+if nargin < 5 %isempty(support_dirname)
     support_dirname = 'support';
 end
 % Get Stimulation protocol - what if there is no stimulation?
@@ -57,7 +57,7 @@ RefIm = mean(mov,3);%Avg image
 t = (1:nframes)*dt;%Time vector
 
 disp(nframes)
-[Fmasks, roimask] = apply_mask_RMmov_BkgSel_FanLab_withpath(mov, session_path);
+[Fmasks, roimask] = apply_mask_RMmov_BkgSel_FanLab_withpath(mov, session_path,'');
 saveas(gca,fullfile(save_dir,'MaskTraces_RMmov.fig'));
 
 Fmask2 = zeros(nframes,1); outrangecell = zeros(1);
