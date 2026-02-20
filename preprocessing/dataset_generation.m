@@ -9,17 +9,23 @@ elseif ispc
     root_path = fullfile('Z:');
 end
 
+tinkering = 1; % if editing in labmembers directory before pushing changes
 %motion_corr = 'post-motion'; 
 %dataset_type = 'train';
 %% generating paths
-addpath(fullfile(root_path,'Computer Code', 'SUPPORT-denoising', 'utils'));
-addpath(fullfile(root_path,'Computer Code', 'SUPPORT-denoising', 'preprocessing'));
-
+if ~tinkering
+    code_path = fullfile(root_path,'Computer Code');
+else
+    code_path = fullfile(root_path, 'Labmembers', 'Erin', 'code');
+end
+addpath(fullfile(code_path, 'SUPPORT-denoising', 'utils'));
+addpath(fullfile(code_path, 'SUPPORT-denoising', 'preprocessing'));
+safe_addpath(fullfile(root_path, 'Computer Code', 'Image Processing'));
 %% set paths to data
 % look through all of these parent folders for sessions
 path.root.data = {fullfile(root_path, 'Labmembers', 'Kohl', 'CCK'), ...
                   fullfile(root_path, 'Labmembers', 'Xingyu', 'CCK-GtACR-BTSP')};
-path.save_dir = fullfile(root_path, 'Computer Code', 'SUPPORT-denoising', 'datasets', 'PC', 'train_higherSNR');
+path.cell_type = fullfile(code_path, 'SUPPORT-denoising', 'datasets', 'PC');
 custom_raw_roots = path.root.data;
 
 % TODO add functionality to select specific animals/sessions
@@ -29,11 +35,15 @@ sel_FOVs = [];
 sel_slices = [];
 animal_type = '';
 exclude = {'Expression', 'nobeh', 'CCKBC', 'cck-gevi', 'wkEC', 'check'};
-min_spikes = 5; 
-snr_min = 3;
+min_spikes = 0; 
+snr_min = 5;
+saveStr = sprintf("minSNR_%d", snr_min);
+path.save_dir = fullfile(path.cell_type, saveStr);
 %% setup sessions structure
-if exist(fullfile(path.save_dir, 'total_sessions.mat'), 'file')
-    load(fullfile(path.save_dir, 'total_sessions.mat'), 'total_sessions');
+if ~exist(path.save_dir, 'dir')
+    mkdir(path.save_dir); end
+if exist(fullfile(path.cell_type, sprintf("total_sessions_%s.mat", saveStr)), 'file')
+    load(fullfile(path.cell_type, sprintf("total_sessions_%s.mat", saveStr)), 'total_sessions');
 else
     total_sessions = struct([]);
     % skip any directories that contain the strings in exclude
@@ -60,7 +70,7 @@ else
     valid_paths = arrayfun(@(s) isfolder(s.session_path), total_sessions);
     total_sessions = total_sessions(valid_paths);
     % keep sessions with unique session_paths
-    save(fullfile(path.save_dir, 'total_sessions.mat'), 'total_sessions');
+    save(fullfile(path.cell_type, sprintf("total_sessions_%s.mat", saveStr)), 'total_sessions');
 end
 %% filter total sessions
 nsessions = 350; %number of sessions to randomly keep
@@ -68,16 +78,17 @@ if length(total_sessions) > nsessions
     rand_indices = randperm(length(total_sessions), nsessions);
     total_sessions = total_sessions(rand_indices);
 end
-save(fullfile(path.save_dir, 'dataset_sessions.mat'), 'total_sessions');
+
+save(fullfile(path.cell_type, 'dataset_sessions.mat'), 'total_sessions');
 dataset_sessions = total_sessions;
 sessions = convert_struct_paths(dataset_sessions, root_path);
-
+nsessions = length(sessions);
 % decided on post motion correction (used to test before or after motion correction)
 
 %% Saving Samples of Masked Recordings
 target_file = 'movReg.bin';
 %if contains(dataset_type, 'test'); sample = 0; else if contains(dataset_type, 'train'); sample = 1; else; sample = 0; end; end
-sel_nframes = 2500; % selecting 1s of recording
+sel_nframes = ceil(300000/nsessions); % selecting enough to make a 300,000 frame dataset
 
 for sess_i = 1:length(sessions)
     path_to_sess = char(fullfile(sessions(sess_i).session_path));

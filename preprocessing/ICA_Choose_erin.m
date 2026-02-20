@@ -1,7 +1,7 @@
 % This is the manual input portion of Run_PCA_ICA_RMmov_FanLab_function
 % Save this as Run_PCA_ICA_RMmov_FanLab_Input.m
 
-function ICA_Choose(session_path, use_support, support_dirname, use_template)
+function ICA_Choose(session_path, use_support, support_dirname)
 
 positions = {
     [0.0, 0.5, 0.5, 0.5]; % Top-left
@@ -33,18 +33,17 @@ for i = 1:nCell
     ncolB = floor(size(CellImgs{i,1}, 2)/2);
 
     is_process = 1;
+
     while is_process
         nIcs = size(icsSpace,2);
-        n_row = ceil((nIcs+1)/4);
-        n_col = 4;
 
          %% Figures
          h = figure(7); clf;
          set(h, 'Units', 'normalized', 'Position', positions{2});
-         subplot(n_row,n_col,1);
+         subplot(ceil(nIcs/3),ceil(nIcs/3),1);
          imshow(mean(MaskMov{i},3),[]);title('Template')
-         for j = 1:nIcs
-             subplot(n_row,n_col,j+1);
+         for j = 1:size(icsSpace,2)
+             subplot(ceil(nIcs/3),ceil(nIcs/3),j+1);
              imshow2(toimg(icsSpace(:,j), nrowB, ncolB), []);
              title(j)
          end
@@ -61,13 +60,8 @@ for i = 1:nCell
          saveas(gca,fullfile(save_dir, [num2str(i) 'ICATrace.fig']))
 
          %% Options
-         if use_template
-             if ~is_new_mask; BestUpper = 'T'; else; BestUpper = num2str(11); end
-         else
-            Best = input(['Choose best IC for cell #' num2str(i) ': (C: crop, I: invert, P: Previous IC, T: template mask, M: merge recs) '], 's');
-            BestUpper = upper(strtrim(Best));
-         end
-         is_new_mask = 0;
+         Best = input(['Choose best IC for cell #' num2str(i) ': (C: crop, I: invert, P: Previous IC, T: template mask, M: merge recs) '], 's');
+         BestUpper = upper(strtrim(Best));
         %BestUpper = makeICAFigs(icsSpace, icsTime, icsTimeOrig, MaskMov, i, save_dir, positions, nrowB, ncolB, struct('flag', false, 'rec_names', {}));
         if strcmp(BestUpper, 'C')
             %Get user input for time regions to remove.
@@ -87,55 +81,86 @@ for i = 1:nCell
             else
                 error('Invalid input. Enter C, I, or FOV #.');
             end
-        elseif strcmp(BestUpper, 'T') 
+        elseif strcmp(BestUpper, 'T')
+           
+            %[icsSpace_t, icsTime_t, icsTimeOrig_t] = trace_from_movie(movie, W);
+
             % Dimensions
             movie = MaskMov{i};
-            ds_factor = 2;   % downsample factors rows and cols
-            if mod(size(movie,1),ds_factor), movie = movie(1:end-1,:,:); end
-            if mod(size(movie,2),ds_factor), movie = movie(:,1:end-1,:); end
+            bh = 2; bw = 2;   % downsample factors rows and cols
+            if mod(size(movie,1),bh), movie = movie(1:end-1,:,:); end
+            if mod(size(movie,2),bw), movie = movie(:,1:end-1,:); end
+            [n_row, n_col,n_samp] = size(movie);
 
-            %Photobleaching correction - on movie
+            %Photobleaching correction
+
 
             %Define Mask
-            mask = mean(movie,3); %Template Weights
-            mask = (mask - min(mask(:))) / (max(mask(:)) - min(mask(:))); %Normalize
-            thr = 0.4 * max(mask(:));%Set Threshold
-            mask(mask < thr) = 0;       %Zero Threshold
+            W = mean(movie,3); %Template Weights
+            W = (W - min(W(:))) / (max(W(:)) - min(W(:))); %Normalize
+            
+            thr = 0.4 * max(W(:));%Set Threshold
+            W(W < thr) = 0;       %Zero Threshold
             %figure(); imagesc(W);
-            is_new_mask = 1;
 
+            %Apply Mask
+            wvec = reshape(W, 1, []);               % 1x576
+            M2   = reshape(movie, [], n_samp); % 576xT
+            sOrig = wvec * M2;                      % 1xT
+            sOrig = sOrig(:);                       % Tx1
+            sOrig = (sOrig-mean(sOrig))/std(sOrig)*60;%Z-score
+
+            % Downsample
+            % Reshape and average
+            W_downsample = squeeze(mean(mean(reshape(W, bh, n_row/bh, bw, n_col/bw),1), 3));            
+            W_ds_flat = reshape(W_downsample, 1, [])';
+            %figure(); hold on; plot((1:size(s,1))/1000,s);
+
+            smallmov = MaskMov{i};
+            if mod(size(smallmov,1),2), smallmov = smallmov(1:end-1,:,:); end
+            if mod(size(smallmov,2),2), smallmov = smallmov(:,1:end-1,:); end
+            [nrow2, ncol2, nframe2] = size(smallmov);
+            tmp = reshape(smallmov,Bin,nrow2/Bin,Bin,ncol2/Bin,nframe2);
+            smovB = squeeze(mean(mean(tmp,1),3));
+
+            %not implemented yet - from ica pre
+            smovBN = double(pblc(vm(smovB(:,:,1:end))));
+            smovBN2 = smovBN(:,:,1:end);
+            [nrowB, ncolB, ~] = size(smovBN2);
+            movHPF = smovBN2 - imfilter(smovBN2, ones(1,1,smoothing)/smoothing, 'replicate');
+
+
+            % High-pass the template trace - note distinct from ICA_pre implementation
+            Fs = 1000;      % Hz (dt = 1 ms)
+            Fc = 100;       % Hz cutoff
+            [b,a] = butter(2, Fc/(Fs/2), 'high');
+            sHP = filtfilt(b, a, sOrig);
+            sHP = sHP/(60*2);
+
+            % Append as an extra component
+            icsSpace    = [icsSpace, W_ds_flat];     % space: (nrowB*ncolB) x (nIcs+1)
+            icsTimeOrig = [icsTimeOrig, sOrig]; % time (orig): T x (nIcs+1)
+            icsTime     = [icsTime, sHP];       % time (HP):   T x (nIcs+1)
         elseif strcmp(BestUpper, 'P')
-            % Dimensions
-            movie = MaskMov{i};
-            ds_factor = 2;   % downsample factors rows and cols
-            if mod(size(movie,1),ds_factor), movie = movie(1:end-1,:,:); end
-            if mod(size(movie,2),ds_factor), movie = movie(:,1:end-1,:); end
+            % Won't work because need to project IC onto raw trace to extract
+            % signal...
 
             %Get Previous Path
-            parentPath = fileparts(session_path);
+            prev = load('ICA_PreResults.mat',{'icsTimeOrig_all','icsSpace'});
+            open([num2str(i) 'ICAImg.fig']);sgtitle('Previous Recording IC''s for cell');
 
-            parentDirs = dir(parentPath);
-            parentDirs = parentDirs([parentDirs.isdir]);
-            parentDirs = parentDirs(~ismember({parentDirs.name}, {'.','..','red','blue'}));
+            
 
-            parts = strsplit(session_path, filesep);
-            currName = parts{end};
-            idx = find(strcmp({parentDirs.name}, currName), 1);
+            Best = input(['Which Previous IC for cell #' num2str(i) ':'],'s');
+            BestNum = str2double(Best);
 
-            if ~isempty(idx) && idx > 1
-                oneAbove = parentDirs(idx-1);
-                oneAbove = fullfile(oneAbove.folder,oneAbove.name);
+            if ~isnan(BestNum) && BestNum >= 1 && BestNum <= nIcs && mod(BestNum,1)==0
+                % Valid IC index
+                IntensOrig(:,i) = prev.icsTimeOrig(:, BestNum);
+                ICAImgs{i} = toimg(icsSpace(:, BestNum), nrowB, ncolB);
             else
-                oneAbove = [];
-                error('No previous mask found in ',oneAbove);
+                error('Invalid input. Enter C, I, or FOV #.');
             end
-
-
-            %Assume Previously choosen IC
-            prev = load(fullfile(oneAbove,'Masks_BestIcaImgs.mat'),'ICAImgs');
-            mask = prev.ICAImgs{i};
-            is_new_mask = 1;
-
         elseif strcmp(BestUpper, 'M')
             % rerun ICA_Pre_multiple_rec with more recordings merged
             disp('rerunning ICA pre with more recordings merged - please wait...');
@@ -182,26 +207,11 @@ for i = 1:nCell
             end
         end
 
-        if is_new_mask
-          
-            %Apply Mask to Movie
-            [icsSpace_new,icsTimeOrig_new,icsTime_new] = applyMask2Movie(movie,mask,ds_factor);
-            %[icsSpace_t, icsTime_t, icsTimeOrig_t] = trace_from_movie(movie, W);
-
-            % Append as an extra component
-            icsSpace    = [icsSpace, icsSpace_new];       % space: (nrowB*ncolB) x (nIcs+1)
-            icsTimeOrig = [icsTimeOrig, icsTimeOrig_new]; % time (orig): T x (nIcs+1)
-            icsTime     = [icsTime, icsTime_new];         % time (HP):   T x (nIcs+1)
-        end
-
     end
-    if use_template
-        save(fullfile(save_dir, 'Masks_BestIcaTrace_template'),'IntensOrig');
-        save(fullfile(save_dir, 'Masks_BestIcaImgs_template'),'ICAImgs','CellImgs');
-    else
-        save(fullfile(save_dir, 'Masks_BestIcaTrace'),'IntensOrig');
-        save(fullfile(save_dir, 'Masks_BestIcaImgs'),'ICAImgs','CellImgs');
-    end
+
+    save(fullfile(save_dir, 'Masks_BestIcaTrace'),'IntensOrig');
+    save(fullfile(save_dir, 'Masks_BestIcaImgs'),'ICAImgs','CellImgs');
+
     figure;
     for i = 1:nCell
         subplot(nCell+3,nCell*2,2*i-1); imshow(CellImgs{i},[]);
@@ -245,13 +255,9 @@ for i = 1:nCell
     plot(tdaq, stim_protocol.WFAO(end-(size(Bh2,2)-1):end,1), 'b');% 10 ms offset Modified KS 11/4/25
     legend({'Velocity','TrialSynC','Reward','Lick','BlueStim'});
     xlabel('Time, sec'); ylabel('VR'); axis tight;
-    if use_template
-        saveas(gca, fullfile(save_dir, 'Fig_intens_ICA_template.fig'));
-        saveas(gca, fullfile(save_dir, 'Fig_intens_ICA_template.png'));
-    else
-        saveas(gca, fullfile(save_dir, 'Fig_intens_ICA.fig'));
-        saveas(gca, fullfile(save_dir, 'Fig_intens_ICA.png'));
-    end
+
+    saveas(gca, fullfile(save_dir, 'Fig_intens_ICA.fig'));
+    saveas(gca, fullfile(save_dir, 'Fig_intens_ICA.png'));
 end
 
 function BestUpper = makeICAFigs(icsSpace, icsTime, icsTimeOrig, MaskMov, i, save_dir, positions, nrowB, ncolB, merged)
@@ -311,55 +317,4 @@ end
 Best = input(prompt_str, 's');
 BestUpper = upper(strtrim(Best));
 end
-end
-
-function [icsSpace,icsTimeOrig,icsTime] =  applyMask2Movie(movie,mask,ds_factor)
-            if nargin <3; ds_factor = 2;end
-            [n_row, n_col,n_samp] = size(movie);
-
-            %Bleaching Correction
-            movie = double(pblc(vm(movie(:,:,1:end))));
-
-            % Downsample - Reshape and average
-            if isequal(size(mask), [n_row,n_col])
-                mask_downsample = squeeze(mean(mean(reshape(mask, ds_factor, n_row/ds_factor, ds_factor, n_col/ds_factor),1), 3));    
-            else
-                movie = squeeze(mean(mean(reshape(movie, ds_factor, n_row/ds_factor, ds_factor, n_col/ds_factor,n_samp),1), 3));  
-                mask_downsample = mask;
-            end
-            mask_ds_flat = reshape(mask_downsample, 1, [])';
-            %figure(); hold on; plot((1:size(s,1))/1000,s);
-
-            %Apply Mask
-            mask_vec = reshape(mask, 1, []);               % 1x576
-            M2   = reshape(movie, [], n_samp); % 576xT
-            mask_mov = mask_vec * M2;                      % 1xT
-            mask_mov = mask_mov(:);                       % Tx1
-            mask_mov = (mask_mov-mean(mask_mov))/std(mask_mov)*60;%Z-score
-
-
-            %smallmov = MaskMov{i};
-            %if mod(size(smallmov,1),2), smallmov = smallmov(1:end-1,:,:); end
-            %if mod(size(smallmov,2),2), smallmov = smallmov(:,1:end-1,:); end
-            %[nrow2, ncol2, nframe2] = size(smallmov);
-            %tmp = reshape(smallmov,Bin,nrow2/Bin,Bin,ncol2/Bin,nframe2);
-            %smovB = squeeze(mean(mean(tmp,1),3));
-
-            %not implemented yet - from ica pre
-            %smovBN = double(pblc(vm(smovB(:,:,1:end))));
-            %smovBN2 = smovBN(:,:,1:end);
-            %[nrowB, ncolB, ~] = size(smovBN2);
-            %movHPF = smovBN2 - imfilter(smovBN2, ones(1,1,smoothing)/smoothing, 'replicate');
-
-            % High-pass the template trace - note distinct from ICA_pre implementation
-            Fs = 1000;      % Hz (dt = 1 ms)
-            Fc = 100;       % Hz cutoff
-            [b,a] = butter(2, Fc/(Fs/2), 'high');
-            mask_move_hp = filtfilt(b, a, mask_mov);
-            mask_move_hp = mask_move_hp/(60/2);%Scaling
-
-            % Return
-            icsSpace    = mask_ds_flat;     % space: (nrowB*ncolB) x (nIcs+1)
-            icsTimeOrig = mask_mov;         % time (orig): T x (nIcs+1)
-            icsTime     = mask_move_hp;     % time (HP):   T x (nIcs+1)
 end

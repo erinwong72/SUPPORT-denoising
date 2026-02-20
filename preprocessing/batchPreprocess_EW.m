@@ -39,14 +39,16 @@ defaults = struct( ...
     'support',      struct(), ...
     'is_stim',      true, ...
     'use_ring_bkg', false ...
-);
+    );
+    % 'session_list', struct() ...
+
 
 opts = applyDefaults(opts, defaults);
 
 %% ================= Validation =================
 assert(~isempty(opts.source_dir), 'opts.source_dir must be provided');
-assert(~isempty(opts.anim_id),    'opts.anim_id must be provided');
-assert(~isempty(opts.sess_id),    'opts.sess_id must be provided');
+%assert(~isempty(opts.anim_id),    'opts.anim_id must be provided');
+%assert(~isempty(opts.sess_id),    'opts.sess_id must be provided');
 opts.prepro = logical(opts.prepro);
 opts.rerun  = logical(opts.rerun);
 assert(islogical(opts.prepro) && numel(opts.prepro)==6, ...
@@ -76,14 +78,22 @@ safe_addpath(fullfile(root_path,'Computer Code','NoRmCorre'));
 safe_addpath(fullfile(root_path,'Computer Code','Fan Lab','1extract-voltage-imaging-signal'));
 
 %% ---------------- Session discovery ----------------
-total_sessions = discover_sessions(opts.source_dir, opts.anim_id,opts.source_dir, opts.exclude, opts.struct_save(1));
+% if session_list provided, use that instead of discovering sessions
+if isfield(opts, 'session_list') && ~isempty(opts.session_list) ...&& ...
+        isstruct(opts.session_list) && ~isempty(opts.session_list)
+    total_sessions = opts.session_list;
+    sel_sessions = convert_struct_paths(total_sessions, root_path);
+else
+    total_sessions = discover_sessions(opts.source_dir, opts.anim_id, opts.sess_id, opts.source_dir, opts.exclude, opts.struct_save(1));
+    sessions_all = convert_struct_paths(total_sessions, root_path);
+    % sel_sessions = generate_sessions_struct(sessions_all, struct('save_dir', {opts.source_dir}, 'anim_id',{opts.anim_id}, 'sess_id',{opts.sess_id}),...
+    %                                         opts.sel_slices, opts.sel_FOVs, opts.sel_recs, opts.struct_save(2));
+    sel_sessions = filterSessions(sessions_all, 'anim_id', opts.anim_id, 'sess_id', opts.sess_id, ...
+                                'slice', opts.sel_slices, 'FOV', opts.sel_FOVs, ...
+                                'session_name', opts.sel_recs);
+end
 
-sessions_all = convert_struct_paths(total_sessions, root_path);
-% sel_sessions = generate_sessions_struct(sessions_all, struct('save_dir', {opts.source_dir}, 'anim_id',{opts.anim_id}, 'sess_id',{opts.sess_id}),...
-%                                         opts.sel_slices, opts.sel_FOVs, opts.sel_recs, opts.struct_save(2));
-sel_sessions = filterSessions(sessions_all, 'anim_id', opts.anim_id, 'sess_id', opts.sess_id, ...
-                               'slice', opts.sel_slices, 'FOV', opts.sel_FOVs, ...
-                               'session_name', opts.sel_recs);
+
 %% ---------------- SUPPORT prep ----------------
 if opts.use_support
     sp = opts.support;
@@ -94,7 +104,7 @@ if opts.use_support
         opts.source_dir, opts.anim_id, opts.sess_id, ...
         'sessions_for_support.txt');
 
-    if ~isfile(support_file) || opts.struct_save(2)
+    if ~isfile(support_file) || opts.struct_save(3)
         fprintf('Creating sessions_for_support.txt\n');
 
         session_paths = {sel_sessions.session_path};
@@ -136,7 +146,7 @@ for s = 1:numel(sel_sessions)
 
     %% 2) SUPPORT tiff generation
     if opts.prepro(2)
-        raw_tiff = fullfile(save_dir,'raw.tiff');
+        raw_tiff = fullfile(session_path,'raw.tiff');
         if ~isfile(raw_tiff) || opts.rerun(2)
             Info = textscan(fopen(fullfile(session_path,'experimental_parameters.txt')),'%s');
             nrow = str2double(Info{1}{6});
@@ -179,8 +189,8 @@ for s = 1:numel(sel_sessions)
             );
             ICA_Pre_multiple_rec(ICAPre_opts);
         end
-        if opts.prepro(5) && (~isfile(fullfile(save_dir,'Fig_intens_ICA.fig')) || opts.rerun(5))
-            ICA_Choose(session_path, opts.use_support, opts.support.dirname);
+        if opts.prepro(5) && (~isfile(fullfile(save_dir,'Fig_intens_ICA.fig')) && (~isfile(fullfile(save_dir, 'Masks_BestIcaTrace.mat'))) || opts.rerun(5))
+            ICA_Choose(session_path, opts.use_support, opts.support.dirname, 0);
         end
         close all;
     end

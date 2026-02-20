@@ -1,14 +1,16 @@
-function sessions = discover_sessions(raw_root, animal_id, save_dir, exclude_session_names, rediscover)
+function sessions = discover_sessions(raw_root, animal_id, sess_id, save_opts, exclude_session_names, rediscover)
 % Discover imaging sessions corresponding to the given animal preparation in the raw data directory.
 
 sessions = struct([]);
 
-if nargin < 3; save_dir = []; end
-if nargin < 4; exclude_session_names = []; end
+if nargin < 4; save_opts = struct(); end
+if nargin < 5; exclude_session_names = []; end
 
 % see if the sessions for the animal_prep are already in the save_dir, if so, load them and return
-save_name = sprintf('sessions_%s.mat', animal_id);
-if isfile(fullfile(save_dir, save_name)) && ~rediscover; load(fullfile(save_dir, save_name), 'sessions'); return; end
+if isfield(save_opts, 'save_name'); save_name = save_opts.save_name; else; save_name = 'sessions_for_preprocess.mat'; end
+if isfield(save_opts, 'save_dir'); save_dir = save_opts.save_dir; else; save_dir = ''; end
+if nargin < 6; rediscover = false; end
+if isfile(fullfile(save_dir,animal_id,sess_id, save_name)) && ~rediscover; load(fullfile(save_dir, animal_id, sess_id, save_name), 'sessions'); return; end
 
 % Handle raw_root as either a string or a containers.Map
 if isa(raw_root, 'containers.Map')
@@ -53,9 +55,11 @@ else
 end
 
 % Save sessions as a unit/building block session
-if ~isempty(save_dir) && nargin > 1 && ~isempty(animal_id)
-    save_name = sprintf('sessions_%s.mat', animal_id);
-    save(fullfile(save_dir, animal_id, save_name), "sessions");
+if ~isempty(save_dir) && nargin > 1 && ~isempty(animal_id) && nargin > 2 && ~isempty(sess_id)
+    if ~exist(fullfile(save_dir, animal_id, sess_id), 'dir')
+        mkdir(fullfile(save_dir, animal_id, sess_id));
+    end
+    save(fullfile(save_dir, animal_id, sess_id, save_name), "sessions");
 end
 end
 
@@ -164,6 +168,7 @@ function sessions = process_animal_sessions(animal_path, animal, sessions, exclu
                     sess.anim_id = entry.anim_id;
                     sess.session_path = entry.subdir_path;
                     sess.session_name = entry.subdir_name;
+                    sess.slice = sscanf(slice, 'slice%d'); % Extract slice number from slice name (assuming format like 'slice1', 'slice2', etc.)
                     sess.FOV = entry.FOV;
                     % if preprocessed
                     %     sess.cell_id = entry.cell_id;
