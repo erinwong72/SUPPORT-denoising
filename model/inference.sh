@@ -14,7 +14,11 @@ RERUN=$6
 # get paths and everything passed in from matlab script
 ROOT=/home/$USER/
 
-MODEL_PATH="/mnt/fanlab/Labmembers/Erin/models/$MODEL.pth"
+MODEL_PATH="/home/knswift/SUPPORT/results/saved_models/PC/model_49.pth" #"/mnt/fanlab/Labmembers/Erin/models/$MODEL.pth"
+# TEMPORARILY overriding to test roshni's model
+#MODEL_PATH="/home/knswift/SUPPORT/src/GUI/trained_models/purple_model_50.pth"
+# testing another model
+#MODEL_PATH="/home/knswift/SUPPORT/results/saved_models/PC_minSNR_5/model_49.pth"
 if conda env list | awk '{print $1}' | grep -Fxq "SUPPORT"; then
     conda activate SUPPORT
     echo "Activated SUPPORT environment"
@@ -54,7 +58,7 @@ fi
 LOG="$LOG_DIR/inference_$(date +%Y%m%d_%H%M%S).log"
 export LOG
 export MODEL_PATH
-export GPU_ID=0
+export GPU_ID=1
 export SUPPORT_DIRNAME
 export RERUN
 

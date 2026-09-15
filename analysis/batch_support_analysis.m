@@ -39,86 +39,10 @@ if ~exist(path.save_dir, 'dir')
 analysisFile = "analysis_metrics.mat";
 is_rerun = 0;
 
-%% setup sessions structure
-custom_raw_roots = containers.Map( ...
-    {'cck-gevi-w03', 'cck-gevi-w05'}, ...
-    { fullfile(root_path,'Data and Analysis','DSI-BTSP','CCK-voltage_KS','cck-gevi-w03'), ...
-      fullfile(root_path,'Labmembers','Kohl','CCK','cck-gevi-w05') } ...
-);
+%% add section where you loop through all the files in the directory 
+% (after motion correction), and extract the signal (fmasks)
+% might also be helpful to make a struct to store this information
 
-% exclude = {'ExpressionCheck'};
-target_file = "denoised.tiff";
-
-animal_preps = {'cck-gevi'};
-sessions = struct([]);
-support_sessions = struct([]);
-
-% Check if saved analysis file exists - if so, load it and continue analysis
-analysis_file_path = fullfile(path.root.save, path.analysis_file);
-if exist(analysis_file_path, 'file') && ~is_rerun
-    fprintf('Loading saved analysis file: %s\n', path.analysis_file);
-    saved_data = load(analysis_file_path);
-    if isfield(saved_data, 'sessions')
-        sessions = saved_data.sessions;
-        % Convert paths in loaded sessions struct to match current OS
-        sessions = convert_struct_paths(sessions, root_path);
-        support_sessions = sessions; % Use same sessions as support_sessions
-        fprintf('Continuing analysis from saved file.\n');
-    else
-        fprintf('Analysis file format not recognized, discovering sessions...\n');
-        is_rerun = 1; % Force discovery if file format is wrong
-    end
-end
-
-% If no saved analysis file or rerun requested, discover/load sessions
-if isempty(sessions) || is_rerun
-    % Load or discover sessions for each animal prep
-    for prep = 1:numel(animal_preps)
-        animal_prep = animal_preps{prep};
-        
-        % Try to load saved sessions first
-        path.support_sessions_file = sprintf('sessions_%s.mat', animal_prep);
-        if exist(fullfile(path.root.parent, path.support_sessions_file), 'file')
-            load(fullfile(path.root.parent, path.support_sessions_file), 'support_sessions');
-            continue; %skip this animal prep
-        end
-        % path.sessions_file = sprintf('sessions_%s.mat', animal_prep);
-        % sessions_path = fullfile(path.root.parent, path.sessions_file);
-        
-        if exist(sessions_path, 'file') && ~is_rerun
-            fprintf('Loading saved sessions: %s\n', path.sessions_file);
-            loaded_data = load(sessions_path);
-            if isfield(loaded_data, 'sessions')
-                new_sessions = loaded_data.sessions;
-            else
-                % If file doesn't have expected format, discover sessions
-                fprintf('File format not recognized, discovering sessions...\n');
-                new_sessions = discover_sessions(custom_raw_roots, animal_prep, path.root.parent, exclude);
-            end
-        else
-            % Discover sessions using existing discover_sessions function
-            fprintf('Discovering sessions for %s...\n', animal_prep);
-            new_sessions = discover_sessions(custom_raw_roots, animal_prep, path.root.parent, exclude);
-        end
-        
-        new_sessions = convert_struct_paths(new_sessions, root_path);
-        % Filter sessions for support
-        new_support_sessions = filter_sessions_for_support(new_sessions, motion_corr, target_file);
-                
-        % Renumber cell_ids to be sequential for each date+FOV combination
-        % new_support_sessions = renumber_cell_ids(new_support_sessions);
-        
-        support_sessions = [support_sessions, new_support_sessions];
-        sessions = [sessions, new_support_sessions];
-
-        % Save support sessions
-        save(fullfile(path.root.parent, path.support_sessions_file), 'support_sessions', '-v7.3');
-    end
-end
-
-if isempty(sessions)
-    error('No sessions found. Please run discover_sessions first.');
-end
 %% Choosing baseline noise regions
 % load previously saved noise regions
 noise_regions_file = "noise_regions.mat";

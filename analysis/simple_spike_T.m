@@ -1,4 +1,4 @@
-function [] = ext_spike_T(blueStim)
+function [] = simple_spike_T(IntensOrig, save_dir, blueStim)
 
 % Fan Lab: spike finding in voltage imaging traces
 % step 1: use median filter to get baseline and divide signal over this baseline to get rid of low frequency noise;
@@ -15,11 +15,7 @@ blueStim = 'AO';
 
 sz=get(0,'screensize');
 
-% load('denoised_IntensOrig.mat'); % cd path out of the function
-load('Masks_BestIcaTrace.mat');
-
-% IntensOrig = raw_IntensOrig;
-
+% IntensOrig should be the intensities extracted from applying the masks
 nCells = size(IntensOrig,2);
 clear C;
 for i = 1:nCells
@@ -235,6 +231,5 @@ for i = 1:nCells
     C(i).C=c;
 end
 
-save(['inter_spikeT_spikeW.mat'],'C','nCells','dt','dAdd');
-
+save(fullfile(save_dir,'inter_spikeT_spikeW.mat'),'C','nCells','dt','dAdd');
 % end
