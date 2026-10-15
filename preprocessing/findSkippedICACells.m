@@ -19,7 +19,7 @@ if nargin < 2
     use_template = false;
 end
 if use_template
-    trace_file = fullfile(save_dir, 'Masks_BestIcaTrace_template.mat');
+    trace_file = fullfile(save_dir, 'template_mask_results', 'Masks_BestIcaTrace_template.mat');
 else
     trace_file = fullfile(save_dir, 'Masks_BestIcaTrace.mat');
 end

@@ -10,18 +10,21 @@
 % Outputs:
 %   nCell, t, icsTime_all, icsTimeOrig_all, icsSpace_all, CellImgs, MaskMov
 
-function [nCell, t, icsTime_all, icsTimeOrig_all, icsSpace_all, CellImgs, MaskMov] = ICA_Pre(session_path,is_stim, use_ring_bkg, use_support, support_dirname)
+function [nCell, t, icsTime_all, icsTimeOrig_all, icsSpace_all, CellImgs, MaskMov] = ICA_Pre(session_path,is_stim, use_ring_bkg, use_support, support_dirname, slmoffFrames)
 
 close all; dt = 1;%ms
 % Set default for background subtraction method
 if isempty(session_path)
     session_path = cd();
 end
-if nargin < 2 || isempty(use_ring_bkg)
+if nargin < 3 || isempty(use_ring_bkg)
     use_ring_bkg = 0;  % Default to standard corner box method for backward compatibility
 end
 if nargin < 5 %isempty(support_dirname)
     support_dirname = 'support';
+end
+if nargin < 6
+    slmoffFrames = [];
 end
 % Get Stimulation protocol - what if there is no stimulation?
 if is_stim
@@ -75,34 +78,9 @@ intensC = Fmask2(:,1:end-1);
 bkg     = Fmask2(:,end);
 
 if use_ring_bkg
-    % Circular ring-based background subtraction
-    % Use the circular ring-based background subtraction strategy from
-    % Run_xtalk_PCA_ICA_RMmov_FanLab_function_automask.m
-    % Build a ring mask around all cell ROIs (exclude the last background ROI)
-    imgSize   = [ncol, nrow];      % [width, height] for generateRingMaskFromROI
-    ringWidth = 3;                 % ring width in pixels
-    gap       = 4;                 % gap between ROI and ring
-    ringMask  = generateRingMaskFromROI(roimask(1:end-1), imgSize, ringWidth, gap);
-    
-    % Compute per-frame mean ring intensity and subtract it from each frame
-    mov2       = zeros(size(mov), 'like', mov);
-    ringSignal = zeros(nframes,1);
-    for t0 = 1:nframes
-        frame = mov(:,:,t0);
-        ringSignal(t0) = mean(frame(ringMask));
-        mov2(:,:,t0)   = frame - ringSignal(t0);
-    end
-    
-    % Optional diagnostic plot of ring mask and signal
-    figure;
-    subplot(1,2,1);
-    imshow(ringMask);
-    title('Ring Mask');
-    subplot(1,2,2);
-    plot(1:nframes, ringSignal);
-    xlabel('Frame'); ylabel('Mean Ring Intensity');
-    title('Ring Signal Over Time');
-    saveas(gcf, fullfile(save_dir,'RingMaskAndSignal.fig'));
+    % Ring-based scattered-light / crosstalk subtraction (automask xtalk)
+    imgSize = [ncol, nrow];
+    mov2 = subtractRingXtalk(mov, roimask, imgSize, 'save_dir', save_dir);
 else
     % Standard corner box background subtraction (original method)
     sbkg = bkg;
@@ -137,8 +115,13 @@ for i = 1:nCell
     tmp = reshape(smallmov,Bin,nrow2/Bin,Bin,ncol2/Bin,nframe2);
     smovB = squeeze(mean(mean(tmp,1),3));
     smovBN = double(pblc(vm(smovB(:,:,1:end))));
-    smovBN2 = smovBN(:,:,1:end);
-    [nrowB, ncolB, ~] = size(smovBN2);
+    if exist('slmoffFrames','var') && ~isempty(slmoffFrames)
+        ToUseFrames = setdiff(1:size(smovBN,3), slmoffFrames);
+    else
+        ToUseFrames = 1:size(smovBN,3);
+    end
+    smovBN2 = smovBN(:,:,ToUseFrames);
+    [nrowB, ncolB, nframe2_use] = size(smovBN2);
     movHPF = smovBN2 - imfilter(smovBN2, ones(1,1,smoothing)/smoothing, 'replicate');
 
     %Remove large fluctuations (blood flow or other big fluctuations, better to keep)
@@ -154,7 +137,7 @@ for i = 1:nCell
     saveas(gca,fullfile(save_dir, [num2str(i) 'flucImg.fig']))
 
     pause(2)
-    movHPm = movHPF.*repmat(mask, [1 1 nframe2]);
+    movHPm = movHPF.*repmat(mask, [1 1 nframe2_use]);
     movVec = tovec(movHPm);
     covmat = movVec*movVec';
     [V, ~] = eig(covmat); V = V(:,end:-1:1);
@@ -184,6 +167,11 @@ for i = 1:nCell
     icsSpace = icsST(1:length(u),:);
     icsTime = icsST(end-length(v)+1:end,:);
     icsTimeOrig = vOrig(:,1:nEigUse)*sepmat';
+    if exist('slmoffFrames','var') && ~isempty(slmoffFrames) && size(icsTime,1) ~= size(smovBN,3)
+        icsTime_full = nan(size(smovBN,3), size(icsTime,2));
+        icsTime_full(ToUseFrames,:) = icsTime;
+        icsTime = icsTime_full;
+    end
 
     icsTime_all{i} = icsTime;
     icsTimeOrig_all{i} = icsTimeOrig;
@@ -191,7 +179,8 @@ for i = 1:nCell
     CellImgs{i} = mean(MaskMov{i},3);
 end
 
-save(fullfile(save_dir,'ICA_PreResults.mat'),'icsTime_all','icsTimeOrig_all','icsSpace_all','nCell','t','CellImgs','MaskMov','nrowB','ncolB');
+if ~exist('slmoffFrames','var'); slmoffFrames = []; end
+save(fullfile(save_dir,'ICA_PreResults.mat'),'icsTime_all','icsTimeOrig_all','icsSpace_all','nCell','t','CellImgs','MaskMov','nrowB','ncolB','slmoffFrames');
 %Could probably delete some of these - ie nrowB,ncolB
 end
 

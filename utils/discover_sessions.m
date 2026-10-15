@@ -112,20 +112,21 @@ function sessions = process_animal_sessions(animal_path, animal, sessions, exclu
             slice_path = fullfile(date_path, slice);
             
             all_entries = dir(slice_path);
-            FOVs = [];
             fov_dirs = all_entries([all_entries.isdir] & startsWith({all_entries.name}, 'FOV'));
-            for k = 1:length(fov_dirs)
-                num = sscanf(fov_dirs(k).name, 'FOV%d');
-                if ~isempty(num); FOVs(end+1) = num; end
-            end
 
-            if preprocessed 
+            if preprocessed
                 session_list = struct('anim_id',{}, 'FOV', {}, 'subdir_path', {}, 'subdir_name', {}, 'cell_id', {}, 'num_cells', {});
             else; session_list = struct('anim_id',{}, 'FOV', {}, 'subdir_path', {}, 'subdir_name', {});
             end
 
-            for fov = FOVs
-                fov_path = fullfile(slice_path, sprintf('FOV%d', fov));
+            for fi = 1:numel(fov_dirs)
+                fov_num = sscanf(fov_dirs(fi).name, 'FOV%d');
+                if isempty(fov_num); continue; end
+                fov = fov_num(1);
+                % Use the actual folder name (not sprintf('FOV%d',fov)) so FOV
+                % folders with a suffix, e.g. "FOV2_stimPos90_stimT21-40", are
+                % still found -- reconstructing just "FOV2" would miss them.
+                fov_path = fullfile(slice_path, fov_dirs(fi).name);
                 dirs = dir(fov_path);
                 dirs = dirs([dirs.isdir] & ~ismember({dirs.name}, {'.', '..'}));
                 for i = 1:numel(dirs)

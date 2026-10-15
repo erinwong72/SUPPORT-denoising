@@ -24,9 +24,38 @@ function ICA_Choose(session_path, use_support, support_dirname, use_template, us
 % processing to these cell indices. Existing Masks_BestIcaTrace(.mat) /
 % Masks_BestIcaImgs(.mat) results (if present and the same size) are loaded
 % first so cells outside cell_subset keep their prior decisions.
+%
+% use_template (this argument): when true, every cell is auto-decided by
+% picking 'T' (the auto-thresholded template mask) with no prompting —
+% see the 'T' branch below. Its outputs (Masks_BestIcaTrace_template.mat,
+% Masks_BestIcaImgs_template.mat, Fig_intens_ICA_template.fig/.png) are
+% written to save_dir/template_mask_results/ instead of save_dir itself,
+% so they never collide with a manual/auto run's Masks_BestIcaTrace.mat.
 
 AUTO_SCORE_THR = 0.55;
 AUTO_MARGIN_THR = 0.10;
+
+% batchPreprocess_EW.m normally puts these on the path before calling
+% ICA_Choose; called directly (e.g. from reprocessDisagreedICA.m) that
+% setup is skipped, so toimg/imshow2/stackplot etc. can go missing. Add
+% them here too if they're not already reachable.
+if ~exist('toimg', 'file')
+    if ismac || isunix
+        root_path = '/Volumes/fanlab';
+    else
+        root_path = 'Z:';
+    end
+    extraPaths = { ...
+        fullfile(root_path, 'Computer Code', 'Image Processing'), ...
+        fullfile(root_path, 'Computer Code', 'NoRmCorre'), ...
+        fullfile(root_path, 'Computer Code', 'Fan Lab', '1extract-voltage-imaging-signal') ...
+        };
+    for pIdx = 1:numel(extraPaths)
+        if isfolder(extraPaths{pIdx})
+            addpath(extraPaths{pIdx});
+        end
+    end
+end
 
 positions = {
     [0.0, 0.5, 0.5, 0.5]; % Top-left
@@ -52,13 +81,29 @@ else
     save_dir = session_path;
 end
 load(fullfile(save_dir, 'ICA_PreResults.mat'),'icsTime_all', 'icsTimeOrig_all', 'icsSpace_all', 'nCell', 't', 'CellImgs', 'MaskMov'); % loads icsTime_all, icsTimeOrig_all, icsSpace_all, nCell, t, CellImgs, MaskMov
+pre = load(fullfile(save_dir, 'ICA_PreResults.mat'));
+if isfield(pre, 'slmoffFrames')
+    slmoffFrames = pre.slmoffFrames;
+else
+    slmoffFrames = [];
+end
 h = openfig(fullfile(save_dir, 'MaskTraces_RMmov.fig'), 'new', 'invisible');%Raw Traces
 set(h, 'Units', 'normalized', 'Position', positions{1});
 setFigVisQuiet(h, 'on');
 
+% Template-mask outputs (Masks_*_template.mat, Fig_intens_ICA_template.*)
+% go in their own subfolder of save_dir so they never collide with a
+% manual/auto run's Masks_BestIcaTrace.mat etc.
 if use_template
-    trace_file = fullfile(save_dir, 'Masks_BestIcaTrace_template.mat');
-    imgs_file  = fullfile(save_dir, 'Masks_BestIcaImgs_template.mat');
+    template_dir = fullfile(save_dir, 'template_mask_results');
+    if ~isfolder(template_dir); mkdir(template_dir); end
+else
+    template_dir = save_dir;
+end
+
+if use_template
+    trace_file = fullfile(template_dir, 'Masks_BestIcaTrace_template.mat');
+    imgs_file  = fullfile(template_dir, 'Masks_BestIcaImgs_template.mat');
 else
     trace_file = fullfile(save_dir, 'Masks_BestIcaTrace.mat');
     imgs_file  = fullfile(save_dir, 'Masks_BestIcaImgs.mat');
@@ -92,6 +137,7 @@ for i = cell_subset
     ncolB = floor(size(CellImgs{i,1}, 2)/2);
 
     is_process = 1;
+    is_new_mask = 0; % first pass picks 'T' when use_template; set true by T/R/P
     while is_process
         nIcs = size(icsSpace,2);
         n_row = ceil((nIcs+1)/4);
@@ -122,7 +168,7 @@ for i = cell_subset
          % for a confident auto-pick, and never for a skipped/flagged cell
          % in unattended mode. Numbered figures can't take 'Visible' at
          % creation, so numberedFig keeps them hidden until after saveas.
-         figVis = iff_str(confident || skip_this_cell, 'off', 'on');
+         figVis = iff_str(confident || skip_this_cell || use_template, 'off', 'on');
 
          %% Figures — always built & saved to disk; shown only when needed
          h = numberedFig(7, positions{2});
@@ -159,7 +205,10 @@ for i = cell_subset
              continue
          end
          if use_template
-             if ~is_new_mask; BestUpper = 'T'; else; BestUpper = num2str(11); end
+             % First pass: 'T' appends the template as an extra IC.
+             % Second pass: pick that last column (not hardcoded 11 — ICA
+             % may return fewer than 10 components).
+             if ~is_new_mask; BestUpper = 'T'; else; BestUpper = num2str(nIcs); end
          elseif use_auto
              if confident
                  fprintf('Cell #%d: auto-selected IC #%d (score=%.2f, margin=%.2f)%s\n', ...
@@ -332,9 +381,16 @@ for i = cell_subset
         end
 
     end
+    % Replace SLM-off frames with the cell mean (Manual_xtalk_* / Fan Lab)
+    if ~isempty(slmoffFrames)
+        valid = slmoffFrames(slmoffFrames >= 1 & slmoffFrames <= size(IntensOrig,1));
+        if ~isempty(valid) && ~all(isnan(IntensOrig(:,i)))
+            IntensOrig(valid,i) = mean(IntensOrig(:,i), 'omitnan');
+        end
+    end
     if use_template
-        save(fullfile(save_dir, 'Masks_BestIcaTrace_template'),'IntensOrig');
-        save(fullfile(save_dir, 'Masks_BestIcaImgs_template'),'ICAImgs','CellImgs');
+        save(fullfile(template_dir, 'Masks_BestIcaTrace_template'),'IntensOrig');
+        save(fullfile(template_dir, 'Masks_BestIcaImgs_template'),'ICAImgs','CellImgs');
     else
         save(fullfile(save_dir, 'Masks_BestIcaTrace'),'IntensOrig');
         save(fullfile(save_dir, 'Masks_BestIcaImgs'),'ICAImgs','CellImgs');
@@ -383,8 +439,8 @@ for i = cell_subset
     legend({'Velocity','TrialSynC','Reward','Lick','BlueStim'});
     xlabel('Time, sec'); ylabel('VR'); axis tight;
     if use_template
-        saveas(gca, fullfile(save_dir, 'Fig_intens_ICA_template.fig'));
-        saveas(gca, fullfile(save_dir, 'Fig_intens_ICA_template.png'));
+        saveas(gca, fullfile(template_dir, 'Fig_intens_ICA_template.fig'));
+        saveas(gca, fullfile(template_dir, 'Fig_intens_ICA_template.png'));
     else
         saveas(gca, fullfile(save_dir, 'Fig_intens_ICA.fig'));
         saveas(gca, fullfile(save_dir, 'Fig_intens_ICA.png'));
