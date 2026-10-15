@@ -11,7 +11,7 @@ function [disagreed, reviewLog] = reviewIntensICA(opts)
 % Required:
 %   opts.session_list   struct array with session_path (optional cell_id)
 % Optional:
-%   opts.use_support, opts.support.dirname, opts.save_dir, opts.start_idx
+%   opts.use_support, opts.support.dirname, opts.dataset_dir, opts.start_idx
 %
 % Keys while reviewing:
 %   Enter / y     accept ALL cells for this recording
@@ -19,6 +19,14 @@ function [disagreed, reviewLog] = reviewIntensICA(opts)
 %   n             disagree ALL cells
 %   s             skip (no mark)
 %   q             quit early
+%
+% Autosave/resume: every decision (including auto-disagreed skipped cells)
+% is saved immediately to <opts.dataset_dir>/ICA_Review_Disagreed.mat, so an
+% interruption (crash, Ctrl+C, closed session) loses at most the recording
+% in progress. If that file already exists the next time you call this
+% function, it's loaded and every recording already logged in it (other
+% than ones you explicitly typed 's' to skip, which are retried) is
+% skipped — pass opts.start_idx to override and ignore the saved file.
 
 assert(isfield(opts, 'session_list') && ~isempty(opts.session_list), ...
     'opts.session_list is required');
@@ -36,16 +44,12 @@ if opts.use_support
 else
     support_dirname = '';
 end
-if ~isfield(opts, 'save_dir') || isempty(opts.save_dir)
+if ~isfield(opts, 'dataset_dir') || isempty(opts.dataset_dir)
     out_dir = pwd;
 else
-    out_dir = opts.save_dir;
+    out_dir = opts.dataset_dir;
 end
-if ~isfield(opts, 'start_idx') || isempty(opts.start_idx)
-    start_idx = 1;
-else
-    start_idx = opts.start_idx;
-end
+out_file = fullfile(out_dir, 'ICA_Review_Disagreed.mat');
 
 sel_sessions = opts.session_list;
 paths = string({sel_sessions.session_path});
@@ -58,6 +62,26 @@ reviewLog = struct('session_path', {}, 'save_dir', {}, 'all_cells', {}, ...
     'accepted_cells', {}, 'disagreed_cells', {}, 'list_idx', {}, ...
     'note', {}, 'timestamp', {});
 missing = {};
+donePaths = string.empty; % session_paths already logged in reviewLog, from a resumed file
+
+if ~isfield(opts, 'start_idx') || isempty(opts.start_idx)
+    start_idx = 1;
+    if isfile(out_file)
+        prev = load(out_file, 'disagreed', 'reviewLog', 'missing');
+        if isfield(prev, 'reviewLog')
+            disagreed = prev.disagreed;
+            reviewLog = prev.reviewLog;
+            if isfield(prev, 'missing'); missing = prev.missing; end
+            if ~isempty(reviewLog)
+                donePaths = unique(string({reviewLog.session_path}), 'stable');
+            end
+            fprintf('Resuming from %s — %d recording(s) already logged, %d disagreed.\n', ...
+                out_file, numel(reviewLog), numel(disagreed));
+        end
+    end
+else
+    start_idx = opts.start_idx;
+end
 
 fprintf('Reviewing %d unique recording(s) from %d list row(s) (start=%d).\n', ...
     nUnique, numel(sel_sessions), start_idx);
@@ -65,6 +89,9 @@ fprintf('  Enter/y = accept all   ''1 3'' = accept those cells   n = none   s = 
 
 for u = start_idx:nUnique
     session_path = char(uniquePaths(u));
+    if ~isempty(donePaths) && ismember(string(session_path), donePaths)
+        continue
+    end
     members = find(pathIdx == u);
     if opts.use_support
         save_dir = fullfile(session_path, support_dirname);
@@ -79,9 +106,43 @@ for u = start_idx:nUnique
     fprintf('=== %d/%d  (%d list row(s))  %s ===\n', u, nUnique, numel(members), session_path);
     fprintf('  cells: %s\n', mat2str(all_cells));
 
+    % Cells left undecided by an unattended ICA_Choose run (use_auto=true,
+    % auto_skip_flagged=true — see findSkippedICACells.m) have no mask at
+    % all, so there's nothing to review; auto-disagree them without
+    % opening a figure. Checked against Masks_BestIcaTrace.mat rather than
+    % ICA_AutoSelect_Log.mat directly, since the log isn't touched when a
+    % flagged cell is later resolved via ICA_Choose's cell_subset — trusting
+    % it alone would flag cells you've since already fixed.
+    skippedCells = intersect(all_cells, findSkippedICACells(save_dir, false), 'stable');
+    if ~isempty(skippedCells)
+        reviewLog(end+1) = struct( ... %#ok<AGROW>
+            'session_path', session_path, ...
+            'save_dir', save_dir, ...
+            'all_cells', all_cells, ...
+            'accepted_cells', [], ...
+            'disagreed_cells', skippedCells, ...
+            'list_idx', members, ...
+            'note', 'no mask chosen (skipped in ICA_Choose)', ...
+            'timestamp', datetime('now'));
+        disagreed(end+1) = struct( ... %#ok<AGROW>
+            'session_path', session_path, ...
+            'save_dir', save_dir, ...
+            'cells', skippedCells, ...
+            'list_idx', members, ...
+            'note', 'no mask chosen (skipped in ICA_Choose)', ...
+            'timestamp', datetime('now'));
+        fprintf('  cells %s never had a mask chosen — auto-disagreed, not opening for review\n', mat2str(skippedCells));
+        all_cells = setdiff(all_cells, skippedCells, 'stable');
+        save(out_file, 'disagreed', 'reviewLog', 'missing', 'opts');
+        if isempty(all_cells)
+            continue
+        end
+    end
+
     if ~isfile(support_fig)
         fprintf('  MISSING: %s\n', support_fig);
         missing{end+1} = session_path; %#ok<AGROW>
+        save(out_file, 'disagreed', 'reviewLog', 'missing', 'opts');
         continue
     end
 
@@ -163,9 +224,9 @@ for u = start_idx:nUnique
         fprintf('  marked DISAGREED cells %s (%d recordings so far)\n', ...
             mat2str(bad), numel(disagreed));
     end
+    save(out_file, 'disagreed', 'reviewLog', 'missing', 'opts');
 end
 
-out_file = fullfile(out_dir, 'ICA_Review_Disagreed.mat');
 save(out_file, 'disagreed', 'reviewLog', 'missing', 'opts');
 fprintf('\nDone. %d recording(s) with disagreed cells, %d missing figs.\nSaved: %s\n', ...
     numel(disagreed), numel(missing), out_file);

@@ -72,6 +72,10 @@ function batchPreprocess(opts)
 %                 Default: true.
 %   use_ring_bkg  logical. Ring background subtraction in ICA_Pre instead of
 %                 the corner box method. Default: false.
+%   slmoffFrames  numeric vector of frame indices (1-based, after nremove) to
+%                 exclude from PCA/ICA training and replace with the cell-mean
+%                 in IntensOrig after ICA_Choose — same as Manual_xtalk_* /
+%                 slmoffFrames handling. Default: [].
 %   use_auto_ica  logical. Auto-select the best IC per cell in ICA_Choose
 %                 (score_ica_components.m) when confident, and only prompt
 %                 for ambiguous cells (flagged in ICA_AutoSelect_Log.mat per
@@ -82,6 +86,22 @@ function batchPreprocess(opts)
 %                 windows popping up. Come back later with
 %                 findSkippedICACells.m + ICA_Choose(...,cell_subset) to
 %                 pick those interactively. Default: false.
+%   use_template_ica logical. Skip IC selection entirely and auto-select
+%                 'T' (the auto-thresholded template mask) for every cell —
+%                 fully unattended, no prompting, and takes priority over
+%                 use_auto_ica/auto_skip_ica. Outputs are written to
+%                 <save_dir>/template_mask_results/ instead of directly in
+%                 save_dir. Default: false.
+%   reuse_raw_spike_times logical. Skip the interactive spike-detection UI
+%                 (getpts/input) in step 6 entirely — instead reuse only
+%                 the spike TIMES already found on the non-SUPPORT (noisy)
+%                 trace at <session_path>/inter_spikeT_spikeW.mat, and
+%                 recompute amplitude and width from the denoised trace by
+%                 fitting the same Gaussian used for the noisy trace to a
+%                 window around each reused spike time. See
+%                 applyRawSpikesToDenoised.m. Requires the non-SUPPORT
+%                 spike detection to already have been run for each
+%                 session. Default: false.
 %
 % SUPPORT (only used when use_support is true)
 %   use_support   logical. Denoise with SUPPORT and read ICA inputs from the
@@ -90,7 +110,13 @@ function batchPreprocess(opts)
 %   support.model       char. Model name, e.g. 'CCKBC' or 'PC'.
 %   support.dirname     char. Output subfolder created inside each session
 %                       folder, e.g. 'support_CCKBC'.
+%   support.epoch       double. Epoch of the model to use. Default: 50.
 %   support.background  0/1. Run inference in the background on the server.
+%   support.run_local    optional logical. Set true when this MATLAB
+%                 process is already running ON the fanlab server (e.g. via
+%                 preprocessing_headless.m over SSH) so run_inference.m
+%                 calls inference.sh directly instead of SSHing back into
+%                 the same machine. Default: false.
 %
 % ------------------------- Usage -------------------------
 %   % 1) discover sessions under source_dir
@@ -103,6 +129,7 @@ function batchPreprocess(opts)
 %   opts.support.username   = 'knswift';
 %   opts.support.model      = 'CCKBC';
 %   opts.support.dirname    = 'support_CCKBC';
+%   opts.support.epoch      = 50;
 %   opts.support.background = 0;
 %   batchPreprocess_EW(opts)
 %
@@ -148,8 +175,11 @@ defaults = struct( ...
     'support',      struct(), ...
     'is_stim',      true, ...
     'use_ring_bkg', false, ...
+    'slmoffFrames',  [], ...
     'use_auto_ica', false, ...
     'auto_skip_ica', false, ...
+    'use_template_ica', false, ...
+    'reuse_raw_spike_times', false, ...
     'session_list', [] ...
     );
 
@@ -197,6 +227,9 @@ if opts.use_support
         assert(isfield(opts.support,req{k}), ...
             'opts.support.%s is required when use_support=true', req{k});
     end
+    if ~isfield(opts.support, 'run_local') || isempty(opts.support.run_local)
+        opts.support.run_local = false;
+    end
     % discovery mode needs somewhere to put sessions_for_support.txt;
     % session_list mode writes it to the common parent of session paths
     if isempty(opts.session_list)
@@ -208,8 +241,10 @@ end
 
 
 %% ---------------- OS + root paths ----------------
-if ismac || isunix
+if ismac
     root_path = '/Volumes/fanlab';
+elseif isunix
+    root_path = '/mnt/fanlab';
 elseif ispc
     root_path = 'Z:';
 end
@@ -253,9 +288,13 @@ if isempty(total_sessions)
 end
 
 sessions_all = convert_struct_paths(total_sessions, root_path);
-sel_sessions = filterSessions(sessions_all, 'anim_id', opts.anim_id, 'sess_id', opts.sess_id, ...
-                            'slice', opts.sel_slices, 'FOV', opts.sel_FOVs, ...
-                            'session_name', opts.sel_recs);
+if ~isempty(opts.anim_id) || ~isempty(opts.sess_id) || ~isempty(opts.sel_slices) || ~isempty(opts.sel_FOVs)
+    sel_sessions = filterSessions(sessions_all, 'anim_id', opts.anim_id, 'sess_id', opts.sess_id, ...
+                                'slice', opts.sel_slices, 'FOV', opts.sel_FOVs, ...
+                                'session_name', opts.sel_recs);
+else
+    sel_sessions = sessions_all;
+end
 
 if isempty(sel_sessions)
     warning('No sessions matched the requested selection — nothing to do.');
@@ -268,7 +307,7 @@ end
 if opts.use_support
     support_dirname = opts.support.dirname;
 else
-    support_dirname = 'support';
+    support_dirname = ''; % no support directory
 end
 
 % sessions_for_support.txt location:
@@ -281,7 +320,7 @@ else
 end
 
 if opts.use_support
-    support_file = fullfile(support_root, 'sessions_for_support.txt');
+    support_file = fullfile(support_root, (sprintf('sessions_for_support_%s.txt', opts.support.model)));
 
     if ~isfile(support_file) || opts.struct_save(3)
         fprintf('Creating %s\n', support_file);
@@ -354,7 +393,7 @@ if opts.use_support && opts.prepro(3)
     end
 
     run_inference(opts.support.username, data_path, opts.support.model, ...
-        support_dirname, opts.support.background, opts.rerun(3));
+        support_dirname, opts.support.background, opts.rerun(3), opts.support.run_local, opts.support.epoch);
 end
 
 %% 4–6) ICA + Spike Thresholding
@@ -376,20 +415,32 @@ for s = 1:numel(sel_sessions)
                 'is_stim', opts.is_stim, ...
                 'use_ring_bkg', opts.use_ring_bkg, ...
                 'use_support', opts.use_support, ...
-                'support_dirname', support_dirname ...
+                'support_dirname', support_dirname, ...
+                'slmoffFrames', opts.slmoffFrames ...
             );
             ICA_Pre_multiple_rec(ICAPre_opts);
         end
-        if opts.prepro(5) && (~isfile(fullfile(save_dir,'Fig_intens_ICA.fig')) && (~isfile(fullfile(save_dir, 'Masks_BestIcaTrace.mat'))) || opts.rerun(5))
-            ICA_Choose(session_path, opts.use_support, support_dirname, 0, opts.use_auto_ica, opts.auto_skip_ica);
+        if opts.use_template_ica
+            ica_done_file  = fullfile(save_dir, 'template_mask_results', 'Fig_intens_ICA_template.fig');
+            ica_trace_file = fullfile(save_dir, 'template_mask_results', 'Masks_BestIcaTrace_template.mat');
+        else
+            ica_done_file  = fullfile(save_dir, 'Fig_intens_ICA.fig');
+            ica_trace_file = fullfile(save_dir, 'Masks_BestIcaTrace.mat');
+        end
+        if opts.prepro(5) && (~isfile(ica_done_file) && ~isfile(ica_trace_file) || opts.rerun(5))
+            ICA_Choose(session_path, opts.use_support, support_dirname, opts.use_template_ica, opts.use_auto_ica, opts.auto_skip_ica);
         end
         close all;
     end
 
     if opts.prepro(6) && (~isfile(fullfile(save_dir,'inter_spikeT_spikeW.mat')) || opts.rerun(6))
-        openfig(fullfile(save_dir,'Fig_intens_ICA.fig'));
-        Run_ext_spike_HipCA1VR_AIBluecrt_FanLab_functionV6_withpath(blueStim, session_path, opts.use_support);
-        close all
+        if opts.reuse_raw_spike_times
+            applyRawSpikesToDenoised(session_path, opts.use_template_ica, support_dirname);
+        else
+            openfig(fullfile(save_dir,'Fig_intens_ICA.fig'));
+            Run_ext_spike_HipCA1VR_AIBluecrt_FanLab_functionV6_withpath(blueStim, session_path, opts.use_support);
+            close all
+        end
     end
 end
 

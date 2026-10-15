@@ -9,12 +9,32 @@ function struct_out = convert_struct_paths(struct_in, target_root)
     if isempty(struct_out)
         return;
     end
+
+    if istable(struct_in)
+        if height(struct_in) == 0
+            return
+        end
+        vars = struct_in.Properties.VariableNames;
+        was_string = false(1, numel(vars));
+        for j = 1:numel(vars)
+            was_string(j) = isa(struct_in.(vars{j}), 'string');
+        end
+        struct_out = struct2table(convert_struct_paths(table2struct(struct_in), target_root), 'AsArray', true);
+        for j = 1:numel(vars)
+            if was_string(j)
+                struct_out.(vars{j}) = string(struct_out.(vars{j}));
+            end
+        end
+        return
+    end
     
     % Determine source root paths to look for
-    if ismac || isunix
-        source_roots = {'Z:', 'Z:\'};
+    if ismac 
+        source_roots = {'Z:', 'Z:\', '\\10.93.0.177\fanlab', '/mnt/fanlab'};
+    elseif isunix
+        source_roots = {'Z:', 'Z:\', '\\10.93.0.177\fanlab', '/Volumes/fanlab'};
     else
-        source_roots = {'/Volumes/fanlab'};
+        source_roots = {'/Volumes/fanlab', '/mnt/fanlab'};
     end
     
     % Process each struct in the array

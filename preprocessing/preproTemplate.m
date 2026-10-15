@@ -73,12 +73,18 @@ opts.support.dirname = 'support_CCKBC';
 
 % --- Experiment / ICA flags ---
 opts.is_stim = true;
+% Ring-based scattered-light / crosstalk subtraction in ICA_Pre (automask xtalk)
 opts.use_ring_bkg = true;
+% Optional: frames to exclude from PCA/ICA training + mean-fill in IntensOrig
+% opts.slmoffFrames = 9696:10030;
 % Auto-select confident ICs in ICA_Choose (score_ica_components.m)
 opts.use_auto_ica = false;
 % When true with use_auto_ica: never prompt — flag ambiguous cells and leave
 % them undecided (NaN). Review later with reviewIntensICA / findSkippedICACells.
 opts.auto_skip_ica = false;
+% When true: auto-pick template mask 'T' for every cell; outputs go under
+% <save_dir>/template_mask_results/
+% opts.use_template_ica = false;
 
 %% running preprocessing
 batchPreprocess_EW(opts)
